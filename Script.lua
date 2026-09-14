@@ -2,7 +2,6 @@ local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 -- Удаляем старое меню, если уже висело
@@ -27,7 +26,7 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Legit Phys-Dash [3]"
+title.Text = "JJS Human Dash [3]"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 14
 title.Font = Enum.Font.GothamBold
@@ -49,7 +48,7 @@ toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 toggleDashBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleDashBtn.TextSize = 13
 toggleDashBtn.Font = Enum.Font.GothamBold
-toggleDashBtn.Text = "Леджит дэш по [3]: ВЫКЛ"
+toggleDashBtn.Text = "Мягкий дэш по [3]: ВЫКЛ"
 toggleDashBtn.Parent = mainFrame
 Instance.new("UICorner", toggleDashBtn).CornerRadius = UDim.new(0, 6)
 
@@ -74,7 +73,7 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Мягкий физический дэш за спину без телепортации и палева."
+infoLabel.Text = "Плавный и неспешный дэш за спину, выглядит как игра руками."
 infoLabel.Parent = mainFrame
 
 -- Функция поиска ближайшего игрока
@@ -108,10 +107,10 @@ toggleDashBtn.MouseButton1Click:Connect(function()
 	isDashEnabled = not isDashEnabled
 	if isDashEnabled then
 		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-		toggleDashBtn.Text = "Леджит дэш по [3]: ВКЛ"
+		toggleDashBtn.Text = "Мягкий дэш по [3]: ВКЛ"
 	else
 		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-		toggleDashBtn.Text = "Леджит дэш по [3]: ВЫКЛ"
+		toggleDashBtn.Text = "Мягкий дэш по [3]: ВЫКЛ"
 	end
 end)
 
@@ -142,7 +141,7 @@ toggleLockBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Рендер: плавная (но не резкая) доводка взгляда в ядро врага
+-- Рендер: очень мягкий дововод взгляда в ядро
 RunService.RenderStepped:Connect(function()
 	if isLockOnEnabled then
 		if lockedTargetPart and lockedTargetPart.Parent and lockedTargetPart.Parent:FindFirstChild("Humanoid") and lockedTargetPart.Parent.Humanoid.Health > 0 then
@@ -152,9 +151,9 @@ RunService.RenderStepped:Connect(function()
 				local targetPos = lockedTargetPart.Position
 				
 				local flatTargetPos = Vector3.new(targetPos.X, myRoot.Position.Y, targetPos.Z)
-				-- Плавный поворот через CFrame.lerp, чтобы не было резких дерганий камеры/модели
 				local goalCFrame = CFrame.lookAt(myRoot.Position, flatTargetPos)
-				myRoot.CFrame = myRoot.CFrame:Lerp(goalCFrame, 0.2)
+				-- Плавность поворота снижена, чтобы камера двигалась естественно
+				myRoot.CFrame = myRoot.CFrame:Lerp(goalCFrame, 0.1)
 			end
 		else
 			isLockOnEnabled = false
@@ -165,8 +164,8 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- Функция беспалевного физического дэша за спину
-local function executeLegitDash()
+-- Функция человечного, размеренного дэша
+local function executeHumanDash()
 	if not isDashEnabled or not isLockOnEnabled then return end
 	if isCoolingDown or currentCharges <= 0 then return end
 	
@@ -176,24 +175,23 @@ local function executeLegitDash()
 		
 		if lockedTargetPart and lockedTargetPart.Parent then
 			currentCharges = currentCharges - 1
-			print("[Xeno] Физический дэш за спину! Зарядов осталось:", currentCharges)
+			print("[Xeno] Человечный дэш за спину! Зарядов осталось:", currentCharges)
 			
-			-- Вычисляем вектор направления: от нас к точке за спиной врага
 			local enemyCFrame = lockedTargetPart.CFrame
 			local targetBackPos = lockedTargetPart.Position + (-enemyCFrame.LookVector * 4.5)
 			
-			-- Направление рывка именно по физике (скорость задается мягким импульсом)
 			local directionToBack = (targetBackPos - rootPart.Position)
 			local distance = directionToBack.Magnitude
 			directionToBack = directionToBack.Unit
 			
 			local bodyVelocity = Instance.new("BodyVelocity")
-			bodyVelocity.MaxForce = Vector3.new(300000, 0, 300000) -- Тянем только по плоскости XZ, не трогая прыжки
-			bodyVelocity.Velocity = directionToBack * math.min(distance * 18, 65) -- Скорость зависит от расстояния, но имеет лимит
+			bodyVelocity.MaxForce = Vector3.new(150000, 0, 150000)
+			-- Сниженная скорость и более мягкое время движения, чтобы выглядело натурально
+			bodyVelocity.Velocity = directionToBack * math.min(distance * 10, 32)
 			bodyVelocity.Parent = rootPart
 			
-			-- Быстро отключаем импульс, чтобы персонаж проскользил ровно сколько нужно и остановился сам
-			task.delay(0.14, function()
+			-- Чуть дольше держим импульс, но на меньшей скорости, создавая эффект шага/перебежки
+			task.delay(0.25, function()
 				if bodyVelocity then bodyVelocity:Destroy() end
 			end)
 			
@@ -207,7 +205,7 @@ local function executeLegitDash()
 					currentCharges = maxCharges
 					isCoolingDown = false
 					if isDashEnabled then
-						toggleDashBtn.Text = "Леджит дэш по [3]: ВКЛ"
+						toggleDashBtn.Text = "Мягкий дэш по [3]: ВКЛ"
 						toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
 					end
 					print("[Xeno] Заряды восстановлены.")
@@ -218,12 +216,12 @@ local function executeLegitDash()
 end
 
 -- Кнопка [3]
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
+UserInputService.InputBegan:Connect(function(input, gameProcessed) со
 	if not gameProcessed then
 		if input.KeyCode == Enum.KeyCode.Three or input.KeyCode == Enum.KeyCode.KeypadThree then
-			executeLegitDash()
+			executeHumanDash()
 		end
 	end
 end)
 
-print("[Xeno] Леджит-скрипт загружен!")
+print("[Xeno] Скрипт человечного дэша загружен!")
