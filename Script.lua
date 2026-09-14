@@ -1,5 +1,5 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (NO ESP / MAXIMUM FPS)
+-- JJS LOCK-ON + BACK DASH (NO ESP / CLEAN VERSION)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -148,7 +148,7 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Режим без ESP (максимальный FPS). Нажми K чтобы скрыть меню."
+infoLabel.Text = "ESP полностью удален (чистый FPS). Нажми K чтобы скрыть меню."
 infoLabel.Parent = mainFrame
 
 --==================================================
@@ -439,4 +439,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 updateCharges()
-print("[Xeno] Ultra-light JJS Script loaded without ESP (Maximum FPS)!")
+print("[Xeno] Clean JJS Script loaded without ESP!")
