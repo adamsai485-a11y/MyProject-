@@ -1,6 +1,6 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH
--- Players + NPC/Dummy support
+-- JJS LOCK-ON + BACK DASH (ULTIMATE VERSION)
+-- Players + NPC/Dummy support + Draggable GUI + K Toggle + Prediction + Raycast
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -9,6 +9,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
 --==================================================
 -- НАСТРОЙКИ
@@ -25,6 +26,9 @@ local DASH_TIME_MAX = 0.28
 
 -- Плавность Lock-on
 local LOCK_SMOOTHNESS = 0.10
+
+-- Клавиша для скрытия/показа меню
+local TOGGLE_UI_KEY = Enum.KeyCode.K
 
 --==================================================
 -- УДАЛЯЕМ СТАРОЕ МЕНЮ
@@ -55,17 +59,52 @@ mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
 --==================================================
--- TITLE
+-- TITLE (Drag System)
 --==================================================
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Human Dash [3]"
+title.Text = "JJS Human Dash [3] (K - меню)"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.TextSize = 14
+title.TextSize = 13
 title.Font = Enum.Font.GothamBold
 title.Parent = mainFrame
+
+-- Логика перетаскивания окна мышкой
+local dragging, dragInput, dragStart, startPos
+
+title.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = mainFrame.Position
+		
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+title.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - dragStart
+		mainFrame.Position = UDim2.new(
+			startPos.X.Scale, 
+			startPos.X.Offset + delta.X, 
+			startPos.Y.Scale, 
+			startPos.Y.Offset + delta.Y
+		)
+	end
+end)
 
 --==================================================
 -- СОСТОЯНИЯ
@@ -73,6 +112,7 @@ title.Parent = mainFrame
 
 local isDashEnabled = false
 local isLockOnEnabled = false
+local isMenuVisible = true
 
 local lockedTargetPart = nil
 
@@ -89,14 +129,11 @@ local isDashing = false
 local toggleDashBtn = Instance.new("TextButton")
 toggleDashBtn.Size = UDim2.new(1, -20, 0, 40)
 toggleDashBtn.Position = UDim2.new(0, 10, 0, 40)
-
 toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 toggleDashBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 toggleDashBtn.TextSize = 13
 toggleDashBtn.Font = Enum.Font.GothamBold
 toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
-
 toggleDashBtn.Parent = mainFrame
 
 local dashCorner = Instance.new("UICorner")
@@ -110,14 +147,11 @@ dashCorner.Parent = toggleDashBtn
 local toggleLockBtn = Instance.new("TextButton")
 toggleLockBtn.Size = UDim2.new(1, -20, 0, 40)
 toggleLockBtn.Position = UDim2.new(0, 10, 0, 88)
-
 toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 toggleLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 toggleLockBtn.TextSize = 13
 toggleLockBtn.Font = Enum.Font.GothamBold
 toggleLockBtn.Text = "Лок-он: ВЫКЛ"
-
 toggleLockBtn.Parent = mainFrame
 
 local lockCorner = Instance.new("UICorner")
@@ -131,14 +165,11 @@ lockCorner.Parent = toggleLockBtn
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -20, 0, 22)
 statusLabel.Position = UDim2.new(0, 10, 0, 135)
-
 statusLabel.BackgroundTransparency = 1
 statusLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
-
 statusLabel.TextSize = 11
 statusLabel.Font = Enum.Font.Gotham
 statusLabel.Text = "Цель: нет"
-
 statusLabel.Parent = mainFrame
 
 --==================================================
@@ -148,14 +179,11 @@ statusLabel.Parent = mainFrame
 local chargesLabel = Instance.new("TextLabel")
 chargesLabel.Size = UDim2.new(1, -20, 0, 20)
 chargesLabel.Position = UDim2.new(0, 10, 0, 156)
-
 chargesLabel.BackgroundTransparency = 1
 chargesLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-
 chargesLabel.TextSize = 11
 chargesLabel.Font = Enum.Font.Gotham
 chargesLabel.Text = "Заряды: 4 / 4"
-
 chargesLabel.Parent = mainFrame
 
 --==================================================
@@ -165,172 +193,118 @@ chargesLabel.Parent = mainFrame
 local infoLabel = Instance.new("TextLabel")
 infoLabel.Size = UDim2.new(1, -20, 0, 70)
 infoLabel.Position = UDim2.new(0, 10, 0, 182)
-
 infoLabel.BackgroundTransparency = 1
-
 infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
-
 infoLabel.TextWrapped = true
-infoLabel.Text =
-	"Lock-on работает на игроков и NPC/Dummy. Back Dash использует текущую цель и каждый раз заново определяет её спину."
-
+infoLabel.Text = "Предикт + Raycast + Перетаскивание за заголовок. Нажми K чтобы скрыть меню."
 infoLabel.Parent = mainFrame
+
+--==================================================
+-- ФУНКЦИИ ПРОВЕРКИ ВИДИМОСТИ (RAYCAST)
+--==================================================
+
+local function isVisible(targetPart)
+	local character = LocalPlayer.Character
+	if not character then return false end
+	local myRoot = character:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return false end
+
+	local origin = myRoot.Position
+	local direction = (targetPart.Position - origin)
+
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	raycastParams.FilterDescendantsInstances = {character, targetPart.Parent}
+	raycastParams.IgnoreWater = true
+
+	local result = workspace:Raycast(origin, direction, raycastParams)
+	if result then
+		-- Преграда на пути
+		return false
+	end
+	return true
+end
 
 --==================================================
 -- ПОЛУЧЕНИЕ ROOT PART
 --==================================================
 
 local function getRootPart(model)
+	if not model or not model:IsA("Model") then return nil end
 
-	if not model or not model:IsA("Model") then
-		return nil
-	end
-
-	-- Основной вариант
 	local root = model:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then return root end
 
-	if root and root:IsA("BasePart") then
-		return root
-	end
-
-	-- Запасной вариант для некоторых NPC
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.RootPart then return humanoid.RootPart end
 
-	if humanoid and humanoid.RootPart then
-		return humanoid.RootPart
-	end
-
-	-- Ещё один fallback
-	if model.PrimaryPart
-		and model.PrimaryPart:IsA("BasePart") then
-
+	if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then
 		return model.PrimaryPart
 	end
 
 	return nil
 end
 
---==================================================
--- ПРОВЕРКА, ЯВЛЯЕТСЯ ЛИ MODEL ЦЕЛЬЮ
---==================================================
-
 local function getTargetFromModel(model)
+	if not model or not model:IsA("Model") then return nil end
+	if LocalPlayer.Character == model then return nil end
 
-	if not model or not model:IsA("Model") then
-		return nil
-	end
-
-	-- Не выбираем собственного персонажа
-	if LocalPlayer.Character == model then
-		return nil
-	end
-
-	local humanoid =
-		model:FindFirstChildOfClass("Humanoid")
-
-	if not humanoid then
-		return nil
-	end
-
-	if humanoid.Health <= 0 then
-		return nil
-	end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return nil end
 
 	local root = getRootPart(model)
-
-	if not root then
-		return nil
-	end
+	if not root then return nil end
 
 	return root
 end
 
 --==================================================
 -- ПОИСК БЛИЖАЙШЕЙ ЦЕЛИ
--- Игроки + Dummy/NPC
 --==================================================
 
 local function getBestTarget()
-
 	local character = LocalPlayer.Character
-
-	if not character then
-		return nil
-	end
+	if not character then return nil end
 
 	local myRoot = getRootPart(character)
-
-	if not myRoot then
-		return nil
-	end
+	if not myRoot then return nil end
 
 	local bestTarget = nil
 	local shortestDistance = LOCK_RANGE
-
 	local checkedModels = {}
 
-	--================================================
-	-- СНАЧАЛА ИГРОКИ
-	--================================================
-
+	-- Игроки
 	for _, player in ipairs(Players:GetPlayers()) do
-
 		if player ~= LocalPlayer and player.Character then
-
 			local model = player.Character
-
 			if not checkedModels[model] then
-
 				checkedModels[model] = true
-
 				local root = getTargetFromModel(model)
-
 				if root then
-
-					local distance =
-						(myRoot.Position - root.Position).Magnitude
-
+					local distance = (myRoot.Position - root.Position).Magnitude
 					if distance < shortestDistance then
-
 						shortestDistance = distance
 						bestTarget = root
-
 					end
 				end
 			end
 		end
 	end
 
-	--================================================
-	-- ПОИСК NPC / DUMMY
-	--================================================
-
+	-- NPC / Dummy
 	for _, descendant in ipairs(workspace:GetDescendants()) do
-
 		if descendant:IsA("Humanoid") then
-
 			local model = descendant.Parent
-
-			if model
-				and model:IsA("Model")
-				and not checkedModels[model] then
-
+			if model and model:IsA("Model") and not checkedModels[model] then
 				checkedModels[model] = true
-
 				local root = getTargetFromModel(model)
-
 				if root then
-
-					local distance =
-						(myRoot.Position - root.Position).Magnitude
-
+					local distance = (myRoot.Position - root.Position).Magnitude
 					if distance < shortestDistance then
-
 						shortestDistance = distance
 						bestTarget = root
-
 					end
 				end
 			end
@@ -340,581 +314,250 @@ local function getBestTarget()
 	return bestTarget
 end
 
---==================================================
--- ПРОВЕРКА ЦЕЛИ
---==================================================
-
 local function isTargetValid()
-
-	if not lockedTargetPart then
-		return false
-	end
-
-	if not lockedTargetPart.Parent then
-		return false
-	end
-
+	if not lockedTargetPart or not lockedTargetPart.Parent then return false end
 	local model = lockedTargetPart.Parent
-
-	local humanoid =
-		model:FindFirstChildOfClass("Humanoid")
-
-	if not humanoid then
-		return false
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return false end
+	
+	-- Проверка дистанции
+	local character = LocalPlayer.Character
+	if character then
+		local myRoot = getRootPart(character)
+		if myRoot and (myRoot.Position - lockedTargetPart.Position).Magnitude > LOCK_RANGE * 1.3 then
+			return false
+		end
 	end
-
-	if humanoid.Health <= 0 then
-		return false
-	end
-
+	
 	return true
 end
 
---==================================================
--- ОБНОВЛЕНИЕ GUI
---==================================================
-
 local function updateCharges()
-
-	chargesLabel.Text =
-		"Заряды: "
-		.. tostring(currentCharges)
-		.. " / "
-		.. tostring(maxCharges)
-
+	chargesLabel.Text = "Заряды: " .. tostring(currentCharges) .. " / " .. tostring(maxCharges)
 end
 
 --==================================================
--- LOCK-ON
+-- LOCK-ON TOGGLE
 --==================================================
 
 toggleLockBtn.MouseButton1Click:Connect(function()
-
 	isLockOnEnabled = not isLockOnEnabled
 
 	if isLockOnEnabled then
-
 		local target = getBestTarget()
-
 		if target then
-
 			lockedTargetPart = target
-
-			toggleLockBtn.BackgroundColor3 =
-				Color3.fromRGB(40, 160, 60)
-
-			toggleLockBtn.Text =
-				"Лок-он: ВКЛ"
-
-			statusLabel.Text =
-				"Цель: " .. target.Parent.Name
-
+			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+			toggleLockBtn.Text = "Лок-он: ВКЛ"
+			statusLabel.Text = "Цель: " .. target.Parent.Name
 		else
-
 			isLockOnEnabled = false
 			lockedTargetPart = nil
-
-			toggleLockBtn.BackgroundColor3 =
-				Color3.fromRGB(150, 40, 40)
-
-			toggleLockBtn.Text =
-				"Лок-он: ВЫКЛ"
-
-			statusLabel.Text =
-				"Цель: нет"
-
+			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+			toggleLockBtn.Text = "Лок-он: ВЫКЛ"
+			statusLabel.Text = "Цель: нет"
 		end
-
 	else
-
 		lockedTargetPart = nil
-
-		toggleLockBtn.BackgroundColor3 =
-			Color3.fromRGB(150, 40, 40)
-
-		toggleLockBtn.Text =
-			"Лок-он: ВЫКЛ"
-
-		statusLabel.Text =
-			"Цель: нет"
-
+		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+		toggleLockBtn.Text = "Лок-он: ВЫКЛ"
+		statusLabel.Text = "Цель: нет"
 	end
 end)
-
---==================================================
--- BACK DASH TOGGLE
---==================================================
 
 toggleDashBtn.MouseButton1Click:Connect(function()
-
 	isDashEnabled = not isDashEnabled
-
 	if isDashEnabled then
-
-		toggleDashBtn.BackgroundColor3 =
-			Color3.fromRGB(40, 160, 60)
-
-		toggleDashBtn.Text =
-			"Back Dash [3]: ВКЛ"
-
+		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+		toggleDashBtn.Text = "Back Dash [3]: ВКЛ"
 	else
-
-		toggleDashBtn.BackgroundColor3 =
-			Color3.fromRGB(150, 40, 40)
-
-		toggleDashBtn.Text =
-			"Back Dash [3]: ВЫКЛ"
-
+		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+		toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
 	end
 end)
 
 --==================================================
--- BACK DASH
+-- BACK DASH (С УЧЕТОМ PREDICTION)
 --==================================================
 
 local function executeBackDash()
-
-	if not isDashEnabled then
+	if not isDashEnabled or not isLockOnEnabled or isCoolingDown or isDashing or currentCharges <= 0 then
 		return
 	end
-
-	if not isLockOnEnabled then
-		return
-	end
-
-	if isCoolingDown then
-		return
-	end
-
-	if isDashing then
-		return
-	end
-
-	if currentCharges <= 0 then
-		return
-	end
-
-	--================================================
-	-- ПРОВЕРЯЕМ LOCK-ON
-	--================================================
 
 	if not isTargetValid() then
-
 		lockedTargetPart = nil
 		isLockOnEnabled = false
-
-		toggleLockBtn.BackgroundColor3 =
-			Color3.fromRGB(150, 40, 40)
-
-		toggleLockBtn.Text =
-			"Лок-он: ВЫКЛ"
-
-		statusLabel.Text =
-			"Цель: нет"
-
+		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+		toggleLockBtn.Text = "Лок-он: ВЫКЛ"
+		statusLabel.Text = "Цель: нет"
 		return
 	end
 
 	local character = LocalPlayer.Character
-
-	if not character then
-		return
-	end
-
+	if not character then return end
 	local rootPart = getRootPart(character)
-
-	if not rootPart then
-		return
-	end
+	if not rootPart then return end
 
 	local targetRoot = lockedTargetPart
+	local startPosition = rootPart.Position
 
-	--================================================
-	-- ЗАПОМИНАЕМ СТАРТОВУЮ ПОЗИЦИЮ
-	--================================================
+	-- Расчет с предикшеном (упреждением скорости цели)
+	local targetVelocity = targetRoot.AssemblyLinearVelocity or Vector3.zero
+	local predictedPosition = targetRoot.Position + (targetVelocity * 0.12)
 
-	local startPosition =
-		rootPart.Position
+	local targetLook = targetRoot.CFrame.LookVector
+	local destination = predictedPosition - targetLook * BACK_DISTANCE
 
-	--================================================
-	-- ПЕРВОНАЧАЛЬНЫЙ РАСЧЁТ СПИНЫ
-	--================================================
+	destination = Vector3.new(destination.X, startPosition.Y, destination.Z)
 
-	local targetPosition =
-		targetRoot.Position
-
-	local targetLook =
-		targetRoot.CFrame.LookVector
-
-	local destination =
-		targetPosition
-		- targetLook * BACK_DISTANCE
-
-	destination = Vector3.new(
-		destination.X,
-		startPosition.Y,
-		destination.Z
-	)
-
-	local initialDistance =
-		(destination - startPosition).Magnitude
-
-	if initialDistance < 0.5 then
-		return
-	end
-
-	--================================================
-	-- СПИСЫВАЕМ ЗАРЯД
-	--================================================
+	local initialDistance = (destination - startPosition).Magnitude
+	if initialDistance < 0.5 then return end
 
 	currentCharges -= 1
 	updateCharges()
 
-	--================================================
-	-- START
-	--================================================
-
 	isDashing = true
-
-	local humanoid =
-		character:FindFirstChildOfClass("Humanoid")
-
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local oldAutoRotate = nil
 
 	if humanoid then
-
-		oldAutoRotate =
-			humanoid.AutoRotate
-
+		oldAutoRotate = humanoid.AutoRotate
 		humanoid.AutoRotate = false
 	end
 
-	-- Длительность зависит от расстояния
-	local dashTime =
-		math.clamp(
-			initialDistance / 45,
-			DASH_TIME_MIN,
-			DASH_TIME_MAX
-		)
-
-	local startTime =
-		os.clock()
-
+	local dashTime = math.clamp(initialDistance / 45, DASH_TIME_MIN, DASH_TIME_MAX)
+	local startTime = os.clock()
 	local connection
 
 	connection = RunService.Heartbeat:Connect(function()
-
-		--================================================
-		-- ЗАЩИТА
-		--================================================
-
-		if not rootPart
-			or not rootPart.Parent then
-
+		if not rootPart or not rootPart.Parent or not isTargetValid() then
 			connection:Disconnect()
-
 			isDashing = false
-
-			if humanoid and humanoid.Parent then
-				humanoid.AutoRotate =
-					oldAutoRotate
-			end
-
+			if humanoid and humanoid.Parent then humanoid.AutoRotate = oldAutoRotate end
 			return
 		end
 
-		if not isTargetValid() then
+		local elapsed = os.clock() - startTime
+		local alpha = math.clamp(elapsed / dashTime, 0, 1)
+		local smoothAlpha = alpha * alpha * (3 - 2 * alpha)
 
-			connection:Disconnect()
+		-- Обновление позиции цели на ходу с предикшеном
+		local curVel = targetRoot.AssemblyLinearVelocity or Vector3.zero
+		local curPredPos = targetRoot.Position + (curVel * 0.1)
+		local curLook = targetRoot.CFrame.LookVector
+		local currentBackPosition = curPredPos - curLook * BACK_DISTANCE
 
-			isDashing = false
+		currentBackPosition = Vector3.new(currentBackPosition.X, startPosition.Y, currentBackPosition.Z)
 
-			if humanoid and humanoid.Parent then
-				humanoid.AutoRotate =
-					oldAutoRotate
-			end
+		local newPosition = startPosition:Lerp(currentBackPosition, smoothAlpha)
+		local lookPosition = Vector3.new(curPredPos.X, newPosition.Y, curPredPos.Z)
 
-			return
-		end
-
-		--================================================
-		-- ПРОГРЕСС
-		--================================================
-
-		local elapsed =
-			os.clock() - startTime
-
-		local alpha =
-			math.clamp(
-				elapsed / dashTime,
-				0,
-				1
-			)
-
-		-- SmoothStep
-		local smoothAlpha =
-			alpha * alpha * (3 - 2 * alpha)
-
-		--================================================
-		-- ОБНОВЛЯЕМ СПИНУ ЦЕЛИ
-		--================================================
-
-		local currentTargetPosition =
-			targetRoot.Position
-
-		local currentTargetLook =
-			targetRoot.CFrame.LookVector
-
-		-- Текущая точка за текущей спиной
-		local currentBackPosition =
-			currentTargetPosition
-			- currentTargetLook * BACK_DISTANCE
-
-		-- Сохраняем высоту игрока
-		currentBackPosition =
-			Vector3.new(
-				currentBackPosition.X,
-				startPosition.Y,
-				currentBackPosition.Z
-			)
-
-		--================================================
-		-- ДВИЖЕНИЕ
-		--================================================
-
-		local newPosition =
-			startPosition:Lerp(
-				currentBackPosition,
-				smoothAlpha
-			)
-
-		--================================================
-		-- ПОВОРОТ К ЦЕЛИ
-		--================================================
-
-		local lookPosition =
-			Vector3.new(
-				currentTargetPosition.X,
-				newPosition.Y,
-				currentTargetPosition.Z
-			)
-
-		if
-			(lookPosition - newPosition).Magnitude
-			> 0.01
-		then
-
-			rootPart.CFrame =
-				CFrame.lookAt(
-					newPosition,
-					lookPosition
-				)
-
+		if (lookPosition - newPosition).Magnitude > 0.01 then
+			rootPart.CFrame = CFrame.lookAt(newPosition, lookPosition)
 		else
-
-			rootPart.CFrame =
-				CFrame.new(newPosition)
-
+			rootPart.CFrame = CFrame.new(newPosition)
 		end
-
-		--================================================
-		-- ФИНИШ
-		--================================================
 
 		if alpha >= 1 then
+			local finalPredPos = targetRoot.Position + ((targetRoot.AssemblyLinearVelocity or Vector3.zero) * 0.05)
+			local finalLook = targetRoot.CFrame.LookVector
+			local finalPosition = finalPredPos - finalLook * BACK_DISTANCE
 
-			-- Последний точный расчёт
-			local finalTargetPosition =
-				targetRoot.Position
+			finalPosition = Vector3.new(finalPosition.X, startPosition.Y, finalPosition.Z)
+			local finalLookAt = Vector3.new(finalPredPos.X, finalPosition.Y, finalPredPos.Z)
 
-			local finalLook =
-				targetRoot.CFrame.LookVector
-
-			local finalPosition =
-				finalTargetPosition
-				- finalLook * BACK_DISTANCE
-
-			finalPosition =
-				Vector3.new(
-					finalPosition.X,
-					startPosition.Y,
-					finalPosition.Z
-				)
-
-			local finalLookAt =
-				Vector3.new(
-					finalTargetPosition.X,
-					finalPosition.Y,
-					finalTargetPosition.Z
-				)
-
-			rootPart.CFrame =
-				CFrame.lookAt(
-					finalPosition,
-					finalLookAt
-				)
-
-			rootPart.AssemblyLinearVelocity =
-				Vector3.zero
+			rootPart.CFrame = CFrame.lookAt(finalPosition, finalLookAt)
+			rootPart.AssemblyLinearVelocity = Vector3.zero
 
 			connection:Disconnect()
-
 			isDashing = false
 
 			if humanoid and humanoid.Parent then
-				humanoid.AutoRotate =
-					oldAutoRotate
+				humanoid.AutoRotate = oldAutoRotate
 			end
-
 		end
 	end)
 
-	--==================================================
-	-- ВОССТАНОВЛЕНИЕ ЗАРЯДОВ
-	--==================================================
-
+	-- Восстановление зарядов
 	if currentCharges <= 0 then
-
 		isCoolingDown = true
-
-		toggleDashBtn.Text =
-			"Заряды восстанавливаются..."
-
-		toggleDashBtn.BackgroundColor3 =
-			Color3.fromRGB(200, 140, 0)
+		toggleDashBtn.Text = "Заряды восстанавливаются..."
+		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(200, 140, 0)
 
 		task.delay(3, function()
-
-			currentCharges =
-				maxCharges
-
+			currentCharges = maxCharges
 			isCoolingDown = false
-
 			updateCharges()
 
 			if isDashEnabled then
-
-				toggleDashBtn.Text =
-					"Back Dash [3]: ВКЛ"
-
-				toggleDashBtn.BackgroundColor3 =
-					Color3.fromRGB(40, 160, 60)
-
+				toggleDashBtn.Text = "Back Dash [3]: ВКЛ"
+				toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
 			else
-
-				toggleDashBtn.Text =
-					"Back Dash [3]: ВЫКЛ"
-
-				toggleDashBtn.BackgroundColor3 =
-					Color3.fromRGB(150, 40, 40)
-
+				toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
+				toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 			end
 		end)
 	end
 end
 
 --==================================================
--- LOCK-ON ПОВОРОТ
+-- LOCK-ON RENDER (С АВТОПЕРЕКЛЮЧЕНИЕМ И СТЕНАМИ)
 --==================================================
 
 RunService.RenderStepped:Connect(function()
+	if not isLockOnEnabled then return end
 
-	if not isLockOnEnabled then
-		return
-	end
-
-	if isDashing then
-		return
-	end
-
+	-- Если текущая цель сломалась/умерла, ищем новую
 	if not isTargetValid() then
-
-		isLockOnEnabled = false
-		lockedTargetPart = nil
-
-		toggleLockBtn.BackgroundColor3 =
-			Color3.fromRGB(150, 40, 40)
-
-		toggleLockBtn.Text =
-			"Лок-он: ВЫКЛ"
-
-		statusLabel.Text =
-			"Цель: нет"
-
-		return
+		local newTarget = getBestTarget()
+		if newTarget then
+			lockedTargetPart = newTarget
+		else
+			isLockOnEnabled = false
+			lockedTargetPart = nil
+			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+			toggleLockBtn.Text = "Лок-он: ВЫКЛ"
+			statusLabel.Text = "Цель: нет"
+			return
+		end
 	end
+
+	if isDashing then return end
 
 	local character = LocalPlayer.Character
-
-	if not character then
-		return
-	end
-
+	if not character then return end
 	local myRoot = getRootPart(character)
+	if not myRoot then return end
 
-	if not myRoot then
-		return
-	end
-
-	local targetPosition =
-		lockedTargetPart.Position
-
-	local flatTarget =
-		Vector3.new(
-			targetPosition.X,
-			myRoot.Position.Y,
-			targetPosition.Z
-		)
-
-	local direction =
-		flatTarget - myRoot.Position
+	local targetPosition = lockedTargetPart.Position
+	local flatTarget = Vector3.new(targetPosition.X, myRoot.Position.Y, targetPosition.Z)
+	local direction = flatTarget - myRoot.Position
 
 	if direction.Magnitude > 0.1 then
-
-		local goalCFrame =
-			CFrame.lookAt(
-				myRoot.Position,
-				flatTarget
-			)
-
-		myRoot.CFrame =
-			myRoot.CFrame:Lerp(
-				goalCFrame,
-				LOCK_SMOOTHNESS
-			)
-
+		local goalCFrame = CFrame.lookAt(myRoot.Position, flatTarget)
+		myRoot.CFrame = myRoot.CFrame:Lerp(goalCFrame, LOCK_SMOOTHNESS)
 	end
 
-	statusLabel.Text =
-		"Цель: "
-		.. lockedTargetPart.Parent.Name
-
+	statusLabel.Text = "Цель: " .. lockedTargetPart.Parent.Name
 end)
 
 --==================================================
--- КЛАВИША 3
+-- КЛАВИШИ (3 - дэш, K - скрыть/показать меню)
 --==================================================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-
-	if gameProcessed then
-		return
+	if input.KeyCode == Enum.KeyCode.Three or input.KeyCode == Enum.KeyCode.KeypadThree then
+		if not gameProcessed then
+			executeBackDash()
+		end
 	end
 
-	if input.KeyCode == Enum.KeyCode.Three
-		or input.KeyCode == Enum.KeyCode.KeypadThree then
-
-		executeBackDash()
-
+	if input.KeyCode == TOGGLE_UI_KEY then
+		isMenuVisible = not isMenuVisible
+		mainFrame.Visible = isMenuVisible
 	end
-
 end)
 
---==================================================
--- ГОТОВО
---==================================================
-
 updateCharges()
-
-print("[Xeno] JJS Lock-on + Back Dash loaded!")
-print("[Xeno] Players + NPC/Dummy support enabled.")
+print("[Xeno] Ultimate JJS Lock-on + Back Dash loaded with K-Toggle & Drag!")
