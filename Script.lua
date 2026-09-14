@@ -1,6 +1,5 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (ULTIMATE + ESP RADAR VERSION)
--- Players + NPC/Dummy support + Draggable GUI + K Toggle + Prediction + Raycast + ESP
+-- JJS LOCK-ON + BACK DASH (OPTIMIZED ESP VERSION)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -9,38 +8,24 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 
 --==================================================
 -- НАСТРОЙКИ
 --==================================================
 
 local LOCK_RANGE = 90
-
--- Расстояние за спиной цели
 local BACK_DISTANCE = 3.8
-
--- Время самого перемещения
 local DASH_TIME_MIN = 0.12
 local DASH_TIME_MAX = 0.28
-
--- Плавность Lock-on
 local LOCK_SMOOTHNESS = 0.10
-
--- Клавиша для скрытия/показа меню
 local TOGGLE_UI_KEY = Enum.KeyCode.K
 
 --==================================================
--- УДАЛЯЕМ СТАРОЕ МЕНЮ И ESP
+-- ОЧИСТКА СТАРОГО
 --==================================================
 
-if CoreGui:FindFirstChild("XenoJJSMenu") then
-	CoreGui.XenoJJSMenu:Destroy()
-end
-
-if CoreGui:FindFirstChild("XenoJJSESP") then
-	CoreGui.XenoJJSESP:Destroy()
-end
+if CoreGui:FindFirstChild("XenoJJSMenu") then CoreGui.XenoJJSMenu:Destroy() end
+if CoreGui:FindFirstChild("XenoJJSESP") then CoreGui.XenoJJSESP:Destroy() end
 
 --==================================================
 -- GUI МЕНЮ
@@ -62,32 +47,24 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
---==================================================
--- TITLE (Drag System)
---==================================================
-
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Dash + ESP [3] (K - меню)"
+title.Text = "JJS Dash + Fast ESP [3] (K - меню)"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 13
 title.Font = Enum.Font.GothamBold
 title.Parent = mainFrame
 
--- Логика перетаскивания окна мышкой
+-- Перетаскивание
 local dragging, dragInput, dragStart, startPos
-
 title.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = input.Position
 		startPos = mainFrame.Position
-		
 		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
 		end)
 	end
 end)
@@ -101,12 +78,7 @@ end)
 UserInputService.InputChanged:Connect(function(input)
 	if input == dragInput and dragging then
 		local delta = input.Position - dragStart
-		mainFrame.Position = UDim2.new(
-			startPos.X.Scale, 
-			startPos.X.Offset + delta.X, 
-			startPos.Y.Scale, 
-			startPos.Y.Offset + delta.Y
-		)
+		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	end
 end)
 
@@ -117,17 +89,14 @@ end)
 local isDashEnabled = false
 local isLockOnEnabled = false
 local isMenuVisible = true
-
 local lockedTargetPart = nil
-
 local currentCharges = 4
 local maxCharges = 4
-
 local isCoolingDown = false
 local isDashing = false
 
 --==================================================
--- КНОПКИ И МЕТКИ МЕНЮ
+-- КНОПКИ
 --==================================================
 
 local toggleDashBtn = Instance.new("TextButton")
@@ -139,10 +108,7 @@ toggleDashBtn.TextSize = 13
 toggleDashBtn.Font = Enum.Font.GothamBold
 toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
 toggleDashBtn.Parent = mainFrame
-
-local dashCorner = Instance.new("UICorner")
-dashCorner.CornerRadius = UDim.new(0, 6)
-dashCorner.Parent = toggleDashBtn
+Instance.new("UICorner", toggleDashBtn).CornerRadius = UDim.new(0, 6)
 
 local toggleLockBtn = Instance.new("TextButton")
 toggleLockBtn.Size = UDim2.new(1, -20, 0, 40)
@@ -153,10 +119,7 @@ toggleLockBtn.TextSize = 13
 toggleLockBtn.Font = Enum.Font.GothamBold
 toggleLockBtn.Text = "Лок-он: ВЫКЛ"
 toggleLockBtn.Parent = mainFrame
-
-local lockCorner = Instance.new("UICorner")
-lockCorner.CornerRadius = UDim.new(0, 6)
-lockCorner.Parent = toggleLockBtn
+Instance.new("UICorner", toggleLockBtn).CornerRadius = UDim.new(0, 6)
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -20, 0, 22)
@@ -186,11 +149,11 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Включен Радар/ESP над врагами. Нажми K чтобы скрыть меню."
+infoLabel.Text = "Оптимизированный ESP (без лагов). Нажми K чтобы скрыть меню."
 infoLabel.Parent = mainFrame
 
 --==================================================
--- ESP / РАДАР СИСТЕМА
+-- ОПТИМИЗИРОВАННЫЙ ESP
 --==================================================
 
 local espGui = Instance.new("ScreenGui")
@@ -198,93 +161,71 @@ espGui.Name = "XenoJJSESP"
 espGui.ResetOnSpawn = false
 espGui.Parent = CoreGui
 
-local activeBillboards = {}
+local trackedCharacters = {} -- Кеш моделей
 
-local function removeEspForModel(model)
-	if activeBillboards[model] then
-		activeBillboards[model]:Destroy()
-		activeBillboards[model] = nil
-	end
+local function createEspForCharacter(model)
+	if trackedCharacters[model] then return end
+	local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Head")
+	if not root then return end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "OptimizedESP"
+	billboard.Size = UDim2.new(0, 100, 0, 35)
+	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = root
+	billboard.Parent = espGui
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Text"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.TextSize = 11
+	label.Font = Enum.Font.GothamBold
+	label.TextColor3 = Color3.fromRGB(255, 80, 80)
+	label.TextStrokeTransparency = 0.4
+	label.Parent = billboard
+
+	trackedCharacters[model] = {gui = billboard, label = label, root = root}
 end
 
-local function updateEsp()
-	local character = LocalPlayer.Character
-	if not character then return end
-	local myRoot = character:FindFirstChild("HumanoidRootPart")
-	if not myRoot then return end
+-- Автоматически отслеживаем новых игроков и персонажей
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function(char)
+		task.wait(1)
+		createEspForCharacter(char)
+	end)
+end)
 
-	local currentModels = {}
-
-	-- Собираем всех валидных живых персонажей/NPC в радиусе
-	local function checkAndAdd(model)
-		local humanoid = model:FindFirstChildOfClass("Humanoid")
-		local root = model:FindFirstChild("HumanoidRootPart")
-		if humanoid and humanoid.Health > 0 and root and model ~= character then
-			local dist = (myRoot.Position - root.Position).Magnitude
-			if dist <= LOCK_RANGE * 1.5 then
-				currentModels[model] = root
-			end
-		end
+for _, player in ipairs(Players:GetPlayers()) do
+	if player ~= LocalPlayer and player.Character then
+		createEspForCharacter(player.Character)
 	end
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then checkAndAdd(player.Character) end
-	end
-
-	for _, desc in ipairs(workspace:GetDescendants()) do
-		if desc:IsA("Humanoid") and desc.Parent and desc.Parent:IsA("Model") then
-			checkAndAdd(desc.Parent)
-		end
-	end
-
-	-- Удаляем старые, которых больше нет рядом
-	for model, billboard in pairs(activeBillboards) do
-		if not currentModels[model] then
-			removeEspForModel(model)
-		end
-	end
-
-	-- Создаем или обновляем BillboardGui для каждого
-	for model, root in pairs(currentModels) do
-		local billboard = activeBillboards[model]
-		if not billboard then
-			billboard = Instance.new("BillboardGui")
-			billboard.Name = "ESPTag"
-			billboard.Size = UDim2.new(0, 120, 0, 40)
-			billboard.StudsOffset = Vector3.new(0, 2.8, 0)
-			billboard.AlwaysOnTop = true
-
-			local label = Instance.new("TextLabel")
-			label.Name = "Text"
-			label.Size = UDim2.new(1, 0, 1, 0)
-			label.BackgroundTransparency = 1
-			label.TextSize = 11
-			label.Font = Enum.Font.GothamBold
-			label.TextColor3 = Color3.fromRGB(255, 80, 80)
-			label.TextStrokeTransparency = 0.5
-			label.Parent = billboard
-
-			billboard.Adornee = root
-			billboard.Parent = espGui
-			activeBillboards[model] = billboard
-		end
-
-		local label = billboard:FindFirstChild("Text")
-		if label then
-			local dist = math.floor((myRoot.Position - root.Position).Magnitude)
-			if lockedTargetPart and lockedTargetPart.Parent == model then
-				label.Text = "★ [ ЦЕЛЬ ] ★\n[" .. dist .. "m]"
-				label.TextColor3 = Color3.fromRGB(40, 255, 80)
-			else
-				label.Text = model.Name .. "\n[" .. dist .. "m]"
-				label.TextColor3 = Color3.fromRGB(255, 80, 80)
-			end
-		end
-	end
+	player.CharacterAdded:Connect(function(char)
+		task.wait(1)
+		createEspForCharacter(char)
+	end)
 end
+
+-- Быстрый поиск NPC (ищем через CharacterAdded / с задержкой, а не каждый кадр)
+task.spawn(function()
+	while true do
+		for _, desc in ipairs(workspace:GetDescendants()) do
+			if desc:IsA("Humanoid") and desc.Parent and desc.Parent:IsA("Model") then
+				local model = desc.Parent
+				if model ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(model) then
+					if not trackedCharacters[model] then
+						createEspForCharacter(model)
+					end
+				end
+			end
+		end
+		task.wait(2) -- Проверяем появление новых NPC раз в 2 секунды, а не 60 раз в секунду!
+	end
+end)
 
 --==================================================
--- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ROOT, TARGET)
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 --==================================================
 
 local function getRootPart(model)
@@ -315,39 +256,24 @@ local function getBestTarget()
 
 	local bestTarget = nil
 	local shortestDistance = LOCK_RANGE
-	local checkedModels = {}
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-			local model = player.Character
-			if not checkedModels[model] then
-				checkedModels[model] = true
-				local root = getTargetFromModel(model)
-				if root then
-					local distance = (myRoot.Position - root.Position).Magnitude
-					if distance < shortestDistance then
-						shortestDistance = distance
-						bestTarget = root
-					end
+	for model, data in pairs(trackedCharacters) do
+		if model and model.Parent and data.root then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				local dist = (myRoot.Position - data.root.Position).Magnitude
+				if dist < shortestDistance then
+					shortestDistance = dist
+					bestTarget = data.root
 				end
+			else
+				-- Удаляем мертвых из кеша
+				data.gui:Destroy()
+				trackedCharacters[model] = nil
 			end
-		end
-	end
-
-	for _, descendant in ipairs(workspace:GetDescendants()) do
-		if descendant:IsA("Humanoid") then
-			local model = descendant.Parent
-			if model and model:IsA("Model") and not checkedModels[model] then
-				checkedModels[model] = true
-				local root = getTargetFromModel(model)
-				if root then
-					local distance = (myRoot.Position - root.Position).Magnitude
-					if distance < shortestDistance then
-						shortestDistance = distance
-						bestTarget = root
-					end
-				end
-			end
+		else
+			if data and data.gui then data.gui:Destroy() end
+			trackedCharacters[model] = nil
 		end
 	end
 
@@ -375,12 +301,11 @@ local function updateCharges()
 end
 
 --==================================================
--- КНОПКИ УПРАВЛЕНИЯ ЛОКОМ И ДЭШЕМ
+-- КНОПКИ УПРАВЛЕНИЯ
 --==================================================
 
 toggleLockBtn.MouseButton1Click:Connect(function()
 	isLockOnEnabled = not isLockOnEnabled
-
 	if isLockOnEnabled then
 		local target = getBestTarget()
 		if target then
@@ -415,14 +340,11 @@ toggleDashBtn.MouseButton1Click:Connect(function()
 end)
 
 --==================================================
--- BACK DASH С ПРЕДИКШЕНОМ
+-- BACK DASH
 --==================================================
 
 local function executeBackDash()
-	if not isDashEnabled or not isLockOnEnabled or isCoolingDown or isDashing or currentCharges <= 0 then
-		return
-	end
-
+	if not isDashEnabled or not isLockOnEnabled or isCoolingDown or isDashing or currentCharges <= 0 then return end
 	if not isTargetValid() then
 		lockedTargetPart = nil
 		isLockOnEnabled = false
@@ -444,7 +366,6 @@ local function executeBackDash()
 	local predictedPosition = targetRoot.Position + (targetVelocity * 0.12)
 	local targetLook = targetRoot.CFrame.LookVector
 	local destination = predictedPosition - targetLook * BACK_DISTANCE
-
 	destination = Vector3.new(destination.X, startPosition.Y, destination.Z)
 
 	local initialDistance = (destination - startPosition).Magnitude
@@ -456,7 +377,6 @@ local function executeBackDash()
 	isDashing = true
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local oldAutoRotate = nil
-
 	if humanoid then
 		oldAutoRotate = humanoid.AutoRotate
 		humanoid.AutoRotate = false
@@ -482,7 +402,6 @@ local function executeBackDash()
 		local curPredPos = targetRoot.Position + (curVel * 0.1)
 		local curLook = targetRoot.CFrame.LookVector
 		local currentBackPosition = curPredPos - curLook * BACK_DISTANCE
-
 		currentBackPosition = Vector3.new(currentBackPosition.X, startPosition.Y, currentBackPosition.Z)
 
 		local newPosition = startPosition:Lerp(currentBackPosition, smoothAlpha)
@@ -498,7 +417,6 @@ local function executeBackDash()
 			local finalPredPos = targetRoot.Position + ((targetRoot.AssemblyLinearVelocity or Vector3.zero) * 0.05)
 			local finalLook = targetRoot.CFrame.LookVector
 			local finalPosition = finalPredPos - finalLook * BACK_DISTANCE
-
 			finalPosition = Vector3.new(finalPosition.X, startPosition.Y, finalPosition.Z)
 			local finalLookAt = Vector3.new(finalPredPos.X, finalPosition.Y, finalPredPos.Z)
 
@@ -507,10 +425,7 @@ local function executeBackDash()
 
 			connection:Disconnect()
 			isDashing = false
-
-			if humanoid and humanoid.Parent then
-				humanoid.AutoRotate = oldAutoRotate
-			end
+			if humanoid and humanoid.Parent then humanoid.AutoRotate = oldAutoRotate end
 		end
 	end)
 
@@ -518,12 +433,10 @@ local function executeBackDash()
 		isCoolingDown = true
 		toggleDashBtn.Text = "Заряды восстанавливаются..."
 		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(200, 140, 0)
-
 		task.delay(3, function()
 			currentCharges = maxCharges
 			isCoolingDown = false
 			updateCharges()
-
 			if isDashEnabled then
 				toggleDashBtn.Text = "Back Dash [3]: ВКЛ"
 				toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
@@ -536,12 +449,38 @@ local function executeBackDash()
 end
 
 --==================================================
--- ГЛАВНЫЙ ЦИКЛ (LOCK-ON + ESP UPDATE)
+-- РЕНДЕР (LOCK-ON + ЛЕГКОЕ ОБНОВЛЕНИЕ ТЕКСТА ESP)
 --==================================================
 
+local frameCounter = 0
+
 RunService.RenderStepped:Connect(function()
-	-- Обновляем радар
-	updateEsp()
+	-- Оптимизация: текст дистанции и цвета на ESP обновляем не каждый кадр, а каждые 10 кадров
+	frameCounter = (frameCounter + 1) % 10
+	if frameCounter == 0 then
+		local character = LocalPlayer.Character
+		local myRoot = character and getRootPart(character)
+		
+		if myRoot then
+			for model, data in pairs(trackedCharacters) do
+				if model and model.Parent and data.root and data.label then
+					local dist = math.floor((myRoot.Position - data.root.Position).Magnitude)
+					if dist <= LOCK_RANGE * 1.5 then
+						data.gui.Enabled = true
+						if lockedTargetPart and lockedTargetPart.Parent == model then
+							data.label.Text = "★ [ ЦЕЛЬ ] ★\n[" .. dist .. "m]"
+							data.label.TextColor3 = Color3.fromRGB(40, 255, 80)
+						else
+							data.label.Text = model.Name .. "\n[" .. dist .. "m]"
+							data.label.TextColor3 = Color3.fromRGB(255, 80, 80)
+						end
+					else
+						data.gui.Enabled = false
+					end
+				end
+			end
+		end
+	end
 
 	if not isLockOnEnabled then return end
 
@@ -584,11 +523,8 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if input.KeyCode == Enum.KeyCode.Three or input.KeyCode == Enum.KeyCode.KeypadThree then
-		if not gameProcessed then
-			executeBackDash()
-		end
+		if not gameProcessed then executeBackDash() end
 	end
-
 	if input.KeyCode == TOGGLE_UI_KEY then
 		isMenuVisible = not isMenuVisible
 		mainFrame.Visible = isMenuVisible
@@ -596,4 +532,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 updateCharges()
-print("[Xeno] JJS Ultimate + ESP Radar loaded!")
+print("[Xeno] Optimized JJS Script loaded without FPS drops!")
