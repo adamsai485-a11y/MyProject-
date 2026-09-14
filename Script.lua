@@ -2,6 +2,7 @@ local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
@@ -27,7 +28,7 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Core Lock & Back Dash [3]"
+title.Text = "JJS Smooth Back-Dash [3]"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 14
 title.Font = Enum.Font.GothamBold
@@ -74,10 +75,10 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Лок-он держит взгляд на ядре врага. [3] — дэш ровно за его спину."
+infoLabel.Text = "Лок-он держит ядро. [3] — плавный и ровный телепорт/дэш за спину."
 infoLabel.Parent = mainFrame
 
--- Функция поиска ближайшего игрока (целимся в HumanoidRootPart — ядро/центр)
+-- Функция поиска ближайшего игрока
 local function getBestTarget()
 	local character = LocalPlayer.Character
 	if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
@@ -95,7 +96,7 @@ local function getBestTarget()
 				local dist = (myRoot.Position - enemyRoot.Position).Magnitude
 				if dist < shortestDist then
 					shortestDist = dist
-					bestTargetPart = enemyRoot -- Это самый центр (ядро) персонажа
+					bestTargetPart = enemyRoot
 				end
 			end
 		end
@@ -124,7 +125,6 @@ toggleLockBtn.MouseButton1Click:Connect(function()
 		if lockedTargetPart then
 			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
 			toggleLockBtn.Text = "Лок-он в ядро: ВКЛ"
-			print("[Xeno] Лок-он активирован на ядро цели.")
 		else
 			isLockOnEnabled = false
 			lockedTargetPart = nil
@@ -140,11 +140,10 @@ toggleLockBtn.MouseButton1Click:Connect(function()
 		lockedTargetPart = nil
 		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 		toggleLockBtn.Text = "Лок-он в ядро: ВЫКЛ"
-		print("[Xeno] Лок-он отключен.")
 	end
 end)
 
--- Постоянный рендер: держим персонажа развернутым лицом строго в ядро врага
+-- Рендер: постоянный поворот лицом в ядро врага
 RunService.RenderStepped:Connect(function()
 	if isLockOnEnabled then
 		if lockedTargetPart and lockedTargetPart.Parent and lockedTargetPart.Parent:FindFirstChild("Humanoid") and lockedTargetPart.Parent.Humanoid.Health > 0 then
@@ -153,23 +152,20 @@ RunService.RenderStepped:Connect(function()
 				local myRoot = character.HumanoidRootPart
 				local targetPos = lockedTargetPart.Position
 				
-				-- Поворачиваем персонажа лицом к ядру врага (игнорируя разницу по высоте, чтобы не задирать нос)
 				local flatTargetPos = Vector3.new(targetPos.X, myRoot.Position.Y, targetPos.Z)
 				myRoot.CFrame = CFrame.lookAt(myRoot.Position, flatTargetPos)
 			end
 		else
-			-- Если враг умер или вышел, сбрасываем лок
 			isLockOnEnabled = false
 			lockedTargetPart = nil
 			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 			toggleLockBtn.Text = "Лок-он в ядро: ВЫКЛ"
-			print("[Xeno] Цель потеряна.")
 		end
 	end
 end)
 
--- Функция сайд-дэша строго за спину врага
-local function executeSideDash()
+-- Функция плавного дэша строго за спину
+local function executeSmoothBackDash()
 	if not isDashEnabled or not isLockOnEnabled then return end
 	if isCoolingDown or currentCharges <= 0 then return end
 	
@@ -177,29 +173,31 @@ local function executeSideDash()
 	if character and character:FindFirstChild("HumanoidRootPart") then
 		local rootPart = character.HumanoidRootPart
 		
-		-- Если цель актуальна
 		if lockedTargetPart and lockedTargetPart.Parent then
 			currentCharges = currentCharges - 1
-			print("[Xeno] Сайд-дэш за спину выполнен! Осталось зарядов:", currentCharges)
+			print("[Xeno] Плавный дэш за спину! Зарядов осталось:", currentCharges)
 			
-			local bodyVelocity = Instance.new("BodyVelocity")
-			bodyVelocity.MaxForce = Vector3.new(150000, 0, 150000)
-			
-			-- Берем ориентацию врага: вычисляем точку прямо за его спиной (-LookVector)
+			-- Точка за спиной врага: берем позицию врага и смещаемся по его -LookVector (назад) на 5 единиц
 			local enemyCFrame = lockedTargetPart.CFrame
-			local sideMultiplier = (math.random(1, 2) == 1) and 1 or -1
-			local sideDir = enemyCFrame.RightVector * sideMultiplier
-			local backDir = -enemyCFrame.LookVector
+			local backOffset = -enemyCFrame.LookVector * 5 -- 5 стульев/единиц за спину
+			local targetPosition = lockedTargetPart.Position + backOffset
 			
-			-- Мощный рывок за спину цели с учетом её поворота
-			bodyVelocity.Velocity = (sideDir * 45) + (backDir * 35)
-			bodyVelocity.Parent = rootPart
+			-- Сохраняем высоту персонажа, чтобы не провалиться под текстуры
+			targetPosition = Vector3.new(targetPosition.X, rootPart.Position.Y, targetPosition.Z)
 			
-			task.delay(0.18, function()
-				if bodyVelocity then bodyVelocity:Destroy() end
-			end)
+			-- Создаем идеально плавный твин (движение) за спину за 0.12 секунды
+			local tweenInfo = TweenInfo.new(
+				0.12, -- Время рывка (быстро, но плавно)
+				Enum.EasingStyle.Quad,
+				Enum.EasingDirection.Out
+			)
 			
-			-- Кулдаун после 4 использований
+			-- Одновременно двигаем позицию и смотрим на ядро врага
+			local targetCFrame = CFrame.lookAt(targetPosition, Vector3.new(lockedTargetPart.Position.X, targetPosition.Y, lockedTargetPart.Position.Z))
+			local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
+			tween:Play()
+			
+			-- Кулдаун зарядов
 			if currentCharges <= 0 then
 				isCoolingDown = true
 				toggleDashBtn.Text = "Кулдаун зарядов..."
@@ -212,7 +210,7 @@ local function executeSideDash()
 						toggleDashBtn.Text = "Сайд-дэш по [3]: ВКЛ"
 						toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
 					end
-					print("[Xeno] Кулдаун завершен.")
+					print("[Xeno] Заряды восстановлены.")
 				end)
 			end
 		end
@@ -223,9 +221,9 @@ end
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed then
 		if input.KeyCode == Enum.KeyCode.Three or input.KeyCode == Enum.KeyCode.KeypadThree then
-			executeSideDash()
+			executeSmoothBackDash()
 		end
 	end
 end)
 
-print("[Xeno] Скрипт лок-она в ядро загружен!")
+print("[Xeno] Скрипт плавного дэша загружен!")
