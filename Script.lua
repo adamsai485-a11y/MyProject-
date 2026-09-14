@@ -27,7 +27,7 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Camera Lock & Side Dash [3]"
+title.Text = "JJS Core Lock & Back Dash [3]"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 14
 title.Font = Enum.Font.GothamBold
@@ -36,7 +36,7 @@ title.Parent = mainFrame
 -- Состояния
 local isDashEnabled = false
 local isLockOnEnabled = false
-local lockedTarget = nil
+local lockedTargetPart = nil
 local currentCharges = 4
 local maxCharges = 4
 local isCoolingDown = false
@@ -53,7 +53,7 @@ toggleDashBtn.Text = "Сайд-дэш по [3]: ВЫКЛ"
 toggleDashBtn.Parent = mainFrame
 Instance.new("UICorner", toggleDashBtn).CornerRadius = UDim.new(0, 6)
 
--- Кнопка 2: Лок-он по центру камеры
+-- Кнопка 2: Лок-он в ядро
 local toggleLockBtn = Instance.new("TextButton")
 toggleLockBtn.Size = UDim2.new(1, -20, 0, 40)
 toggleLockBtn.Position = UDim2.new(0, 10, 0, 88)
@@ -61,7 +61,7 @@ toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 toggleLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleLockBtn.TextSize = 13
 toggleLockBtn.Font = Enum.Font.GothamBold
-toggleLockBtn.Text = "Лок-он на врага: ВЫКЛ"
+toggleLockBtn.Text = "Лок-он в ядро: ВЫКЛ"
 toggleLockBtn.Parent = mainFrame
 Instance.new("UICorner", toggleLockBtn).CornerRadius = UDim.new(0, 6)
 
@@ -74,37 +74,33 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Лок-он целит персонажа на врага по центру экрана. [3] делает сайд-дэш за спину."
+infoLabel.Text = "Лок-он держит взгляд на ядре врага. [3] — дэш ровно за его спину."
 infoLabel.Parent = mainFrame
 
--- Функция поиска игрока, который ближе всего к центру экрана (на кого смотрит камера)
-local function getTargetByCameraCenter()
-	local bestTarget = nil
-	local closestDistance = math.huge
-	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+-- Функция поиска ближайшего игрока (целимся в HumanoidRootPart — ядро/центр)
+local function getBestTarget()
+	local character = LocalPlayer.Character
+	if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+	local myRoot = character.HumanoidRootPart
+	
+	local bestTargetPart = nil
+	local shortestDist = 90
 	
 	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
-			if p.Character.Humanoid.Health > 0 then
-				local enemyRoot = p.Character.HumanoidRootPart
-				
-				-- Проецируем позицию врага на экран монитора
-				local screenPos, onScreen = Camera:WorldToViewportPoint(enemyRoot.Position)
-				
-				if onScreen then
-					local screenPos2D = Vector2.new(screenPos.X, screenPos.Y)
-					local distFromCenter = (screenPos2D - screenCenter).Magnitude
-					
-					-- Ищем того, кто ближе всего к перекрестью/центру экрана (в пределах 150 пикселей)
-					if distFromCenter < 150 and distFromCenter < closestDistance then
-						closestDistance = distFromCenter
-						bestTarget = enemyRoot
-					end
+		if p ~= LocalPlayer and p.Character then
+			local enemyRoot = p.Character:FindFirstChild("HumanoidRootPart")
+			local enemyHumanoid = p.Character:FindFirstChild("Humanoid")
+			
+			if enemyRoot and enemyHumanoid and enemyHumanoid.Health > 0 then
+				local dist = (myRoot.Position - enemyRoot.Position).Magnitude
+				if dist < shortestDist then
+					shortestDist = dist
+					bestTargetPart = enemyRoot -- Это самый центр (ядро) персонажа
 				end
 			end
 		end
 	end
-	return bestTarget
+	return bestTargetPart
 end
 
 -- Переключение Сайд-дэша
@@ -124,49 +120,55 @@ toggleLockBtn.MouseButton1Click:Connect(function()
 	isLockOnEnabled = not isLockOnEnabled
 	
 	if isLockOnEnabled then
-		lockedTarget = getTargetByCameraCenter()
-		if lockedTarget then
+		lockedTargetPart = getBestTarget()
+		if lockedTargetPart then
 			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-			toggleLockBtn.Text = "Лок-он на врага: ВКЛ"
+			toggleLockBtn.Text = "Лок-он в ядро: ВКЛ"
+			print("[Xeno] Лок-он активирован на ядро цели.")
 		else
 			isLockOnEnabled = false
+			lockedTargetPart = nil
 			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-			toggleLockBtn.Text = "Никого нет по центру!"
-			task.delay(1.2, function()
+			toggleLockBtn.Text = "Рядом нет врагов!"
+			task.delay(1.5, function()
 				if not isLockOnEnabled then
-					toggleLockBtn.Text = "Лок-он на врага: ВЫКЛ"
+					toggleLockBtn.Text = "Лок-он в ядро: ВЫКЛ"
 				end
 			end)
 		end
 	else
-		lockedTarget = nil
+		lockedTargetPart = nil
 		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-		toggleLockBtn.Text = "Лок-он на врага: ВЫКЛ"
+		toggleLockBtn.Text = "Лок-он в ядро: ВЫКЛ"
+		print("[Xeno] Лок-он отключен.")
 	end
 end)
 
--- Цикл фиксации взгляда на выбранном враге
+-- Постоянный рендер: держим персонажа развернутым лицом строго в ядро врага
 RunService.RenderStepped:Connect(function()
 	if isLockOnEnabled then
-		if lockedTarget and lockedTarget.Parent and lockedTarget.Parent:FindFirstChild("Humanoid") and lockedTarget.Parent.Humanoid.Health > 0 then
+		if lockedTargetPart and lockedTargetPart.Parent and lockedTargetPart.Parent:FindFirstChild("Humanoid") and lockedTargetPart.Parent.Humanoid.Health > 0 then
 			local character = LocalPlayer.Character
 			if character and character:FindFirstChild("HumanoidRootPart") then
 				local myRoot = character.HumanoidRootPart
-				-- Держим персонажа развернутым лицом к залоченной цели
-				local targetPos = Vector3.new(lockedTarget.Position.X, myRoot.Position.Y, lockedTarget.Position.Z)
-				myRoot.CFrame = CFrame.new(myRoot.Position, targetPos)
+				local targetPos = lockedTargetPart.Position
+				
+				-- Поворачиваем персонажа лицом к ядру врага (игнорируя разницу по высоте, чтобы не задирать нос)
+				local flatTargetPos = Vector3.new(targetPos.X, myRoot.Position.Y, targetPos.Z)
+				myRoot.CFrame = CFrame.lookAt(myRoot.Position, flatTargetPos)
 			end
 		else
-			-- Если цель умерла или вышла, плавно сбрасываем лок-он без спама текста
+			-- Если враг умер или вышел, сбрасываем лок
 			isLockOnEnabled = false
-			lockedTarget = nil
+			lockedTargetPart = nil
 			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-			toggleLockBtn.Text = "Лок-он на врага: ВЫКЛ"
+			toggleLockBtn.Text = "Лок-он в ядро: ВЫКЛ"
+			print("[Xeno] Цель потеряна.")
 		end
 	end
 end)
 
--- Логика сайд-дэша за спину жестко привязанная к текущей цели
+-- Функция сайд-дэша строго за спину врага
 local function executeSideDash()
 	if not isDashEnabled or not isLockOnEnabled then return end
 	if isCoolingDown or currentCharges <= 0 then return end
@@ -175,23 +177,29 @@ local function executeSideDash()
 	if character and character:FindFirstChild("HumanoidRootPart") then
 		local rootPart = character.HumanoidRootPart
 		
-		if lockedTarget then
+		-- Если цель актуальна
+		if lockedTargetPart and lockedTargetPart.Parent then
 			currentCharges = currentCharges - 1
+			print("[Xeno] Сайд-дэш за спину выполнен! Осталось зарядов:", currentCharges)
 			
 			local bodyVelocity = Instance.new("BodyVelocity")
-			bodyVelocity.MaxForce = Vector3.new(50000, 0, 50000)
+			bodyVelocity.MaxForce = Vector3.new(150000, 0, 150000)
 			
-			local enemyCFrame = lockedTarget.CFrame
-			local sideDirection = (math.random(1, 2) == 1) and enemyCFrame.RightVector or -enemyCFrame.RightVector
-			local backOfEnemy = -enemyCFrame.LookVector
+			-- Берем ориентацию врага: вычисляем точку прямо за его спиной (-LookVector)
+			local enemyCFrame = lockedTargetPart.CFrame
+			local sideMultiplier = (math.random(1, 2) == 1) and 1 or -1
+			local sideDir = enemyCFrame.RightVector * sideMultiplier
+			local backDir = -enemyCFrame.LookVector
 			
-			bodyVelocity.Velocity = (sideDirection * 40) + (backOfEnemy * 25)
+			-- Мощный рывок за спину цели с учетом её поворота
+			bodyVelocity.Velocity = (sideDir * 45) + (backDir * 35)
 			bodyVelocity.Parent = rootPart
 			
-			task.delay(0.2, function()
+			task.delay(0.18, function()
 				if bodyVelocity then bodyVelocity:Destroy() end
 			end)
 			
+			-- Кулдаун после 4 использований
 			if currentCharges <= 0 then
 				isCoolingDown = true
 				toggleDashBtn.Text = "Кулдаун зарядов..."
@@ -204,6 +212,7 @@ local function executeSideDash()
 						toggleDashBtn.Text = "Сайд-дэш по [3]: ВКЛ"
 						toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
 					end
+					print("[Xeno] Кулдаун завершен.")
 				end)
 			end
 		end
@@ -219,4 +228,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 end)
 
-print("[Xeno] Обновлен лок-он по центру экрана!")
+print("[Xeno] Скрипт лок-она в ядро загружен!")
