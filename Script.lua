@@ -1,5 +1,5 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (OPTIMIZED ESP VERSION)
+-- JJS LOCK-ON + BACK DASH (STABLE ESP VERSION)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -50,7 +50,7 @@ mainCorner.Parent = mainFrame
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Dash + Fast ESP [3] (K - меню)"
+title.Text = "JJS Dash + Stable ESP [3] (K - меню)"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 13
 title.Font = Enum.Font.GothamBold
@@ -149,83 +149,11 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Оптимизированный ESP (без лагов). Нажми K чтобы скрыть меню."
+infoLabel.Text = "Стабильный ESP радар активирован. Нажми K чтобы скрыть меню."
 infoLabel.Parent = mainFrame
 
 --==================================================
--- ОПТИМИЗИРОВАННЫЙ ESP
---==================================================
-
-local espGui = Instance.new("ScreenGui")
-espGui.Name = "XenoJJSESP"
-espGui.ResetOnSpawn = false
-espGui.Parent = CoreGui
-
-local trackedCharacters = {} -- Кеш моделей
-
-local function createEspForCharacter(model)
-	if trackedCharacters[model] then return end
-	local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Head")
-	if not root then return end
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "OptimizedESP"
-	billboard.Size = UDim2.new(0, 100, 0, 35)
-	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Adornee = root
-	billboard.Parent = espGui
-
-	local label = Instance.new("TextLabel")
-	label.Name = "Text"
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.TextSize = 11
-	label.Font = Enum.Font.GothamBold
-	label.TextColor3 = Color3.fromRGB(255, 80, 80)
-	label.TextStrokeTransparency = 0.4
-	label.Parent = billboard
-
-	trackedCharacters[model] = {gui = billboard, label = label, root = root}
-end
-
--- Автоматически отслеживаем новых игроков и персонажей
-Players.PlayerAdded:Connect(function(player)
-	player.CharacterAdded:Connect(function(char)
-		task.wait(1)
-		createEspForCharacter(char)
-	end)
-end)
-
-for _, player in ipairs(Players:GetPlayers()) do
-	if player ~= LocalPlayer and player.Character then
-		createEspForCharacter(player.Character)
-	end
-	player.CharacterAdded:Connect(function(char)
-		task.wait(1)
-		createEspForCharacter(char)
-	end)
-end
-
--- Быстрый поиск NPC (ищем через CharacterAdded / с задержкой, а не каждый кадр)
-task.spawn(function()
-	while true do
-		for _, desc in ipairs(workspace:GetDescendants()) do
-			if desc:IsA("Humanoid") and desc.Parent and desc.Parent:IsA("Model") then
-				local model = desc.Parent
-				if model ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(model) then
-					if not trackedCharacters[model] then
-						createEspForCharacter(model)
-					end
-				end
-			end
-		end
-		task.wait(2) -- Проверяем появление новых NPC раз в 2 секунды, а не 60 раз в секунду!
-	end
-end)
-
---==================================================
--- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ROOT, TARGET)
 --==================================================
 
 local function getRootPart(model)
@@ -248,6 +176,106 @@ local function getTargetFromModel(model)
 	return root
 end
 
+--==================================================
+-- СТАБИЛЬНЫЙ ESP РАДАР (Работает через ScreenGui + Adornee без лагов)
+--==================================================
+
+local espGui = Instance.new("ScreenGui")
+espGui.Name = "XenoJJSESP"
+espGui.ResetOnSpawn = false
+espGui.Parent = CoreGui
+
+local activeBillboards = {}
+
+local function updateEsp()
+	local character = LocalPlayer.Character
+	if not character then return end
+	local myRoot = getRootPart(character)
+	if not myRoot then return end
+
+	local currentFoundModels = {}
+
+	-- Функция проверки и добавления цели для ESP
+	local function processModel(model)
+		local root = getTargetFromModel(model)
+		if root then
+			local dist = (myRoot.Position - root.Position).Magnitude
+			if dist <= LOCK_RANGE * 1.5 then
+				currentFoundModels[model] = root
+			end
+		end
+	end
+
+	-- Проверяем игроков
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then processModel(player.Character) end
+	end
+
+	-- Проверяем NPC/Dummy через детей workspace
+	for _, child in ipairs(workspace:GetChildren()) do
+		if child:IsA("Model") and child ~= character then
+			processModel(child)
+		end
+	end
+
+	-- Удаляем старые BillboardGui, если цели пропали или умерли
+	for model, billboard in pairs(activeBillboards) do
+		if not currentFoundModels[model] or not model.Parent then
+			billboard:Destroy()
+			activeBillboards[model] = nil
+		end
+	end
+
+	-- Создаем или обновляем метки
+	for model, root in pairs(currentFoundModels) do
+		local billboard = activeBillboards[model]
+		if not billboard or not billboard.Parent then
+			billboard = Instance.new("BillboardGui")
+			billboard.Name = "ESPTag"
+			billboard.Size = UDim2.new(0, 120, 0, 40)
+			billboard.StudsOffset = Vector3.new(0, 2.8, 0)
+			billboard.AlwaysOnTop = true
+
+			local label = Instance.new("TextLabel")
+			label.Name = "Text"
+			label.Size = UDim2.new(1, 0, 1, 0)
+			label.BackgroundTransparency = 1
+			label.TextSize = 11
+			label.Font = Enum.Font.GothamBold
+			label.TextStrokeTransparency = 0.4
+			label.Parent = billboard
+
+			billboard.Adornee = root
+			billboard.Parent = espGui
+			activeBillboards[model] = billboard
+		end
+
+		local label = billboard:FindFirstChild("Text")
+		if label then
+			local dist = math.floor((myRoot.Position - root.Position).Magnitude)
+			if lockedTargetPart and lockedTargetPart.Parent == model then
+				label.Text = "★ [ ЦЕЛЬ ] ★\n[" .. dist .. "m]"
+				label.TextColor3 = Color3.fromRGB(40, 255, 80)
+			else
+				label.Text = model.Name .. "\n[" .. dist .. "m]"
+				label.TextColor3 = Color3.fromRGB(255, 80, 80)
+			end
+		end
+	end
+end
+
+-- Запускаем обновление ESP в фоновом потоке каждые 0.15 секунд (полный ноль лагов для FPS)
+task.spawn(function()
+	while true do
+		pcall(updateEsp)
+		task.wait(0.15)
+	end
+end)
+
+--==================================================
+-- ПОИСК ЛУЧШЕЙ ЦЕЛИ ДЛЯ ЛОКА
+--==================================================
+
 local function getBestTarget()
 	local character = LocalPlayer.Character
 	if not character then return nil end
@@ -256,24 +284,33 @@ local function getBestTarget()
 
 	local bestTarget = nil
 	local shortestDistance = LOCK_RANGE
+	local checkedModels = {}
 
-	for model, data in pairs(trackedCharacters) do
-		if model and model.Parent and data.root then
-			local humanoid = model:FindFirstChildOfClass("Humanoid")
-			if humanoid and humanoid.Health > 0 then
-				local dist = (myRoot.Position - data.root.Position).Magnitude
-				if dist < shortestDistance then
-					shortestDistance = dist
-					bestTarget = data.root
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local model = player.Character
+			checkedModels[model] = true
+			local root = getTargetFromModel(model)
+			if root then
+				local distance = (myRoot.Position - root.Position).Magnitude
+				if distance < shortestDistance then
+					shortestDistance = distance
+					bestTarget = root
 				end
-			else
-				-- Удаляем мертвых из кеша
-				data.gui:Destroy()
-				trackedCharacters[model] = nil
 			end
-		else
-			if data and data.gui then data.gui:Destroy() end
-			trackedCharacters[model] = nil
+		end
+	end
+
+	for _, child in ipairs(workspace:GetChildren()) do
+		if child:IsA("Model") and child ~= character and not checkedModels[child] then
+			local root = getTargetFromModel(child)
+			if root then
+				local distance = (myRoot.Position - root.Position).Magnitude
+				if distance < shortestDistance then
+					shortestDistance = distance
+					bestTarget = root
+				end
+			end
 		end
 	end
 
@@ -449,39 +486,10 @@ local function executeBackDash()
 end
 
 --==================================================
--- РЕНДЕР (LOCK-ON + ЛЕГКОЕ ОБНОВЛЕНИЕ ТЕКСТА ESP)
+-- РЕНДЕР (LOCK-ON)
 --==================================================
 
-local frameCounter = 0
-
 RunService.RenderStepped:Connect(function()
-	-- Оптимизация: текст дистанции и цвета на ESP обновляем не каждый кадр, а каждые 10 кадров
-	frameCounter = (frameCounter + 1) % 10
-	if frameCounter == 0 then
-		local character = LocalPlayer.Character
-		local myRoot = character and getRootPart(character)
-		
-		if myRoot then
-			for model, data in pairs(trackedCharacters) do
-				if model and model.Parent and data.root and data.label then
-					local dist = math.floor((myRoot.Position - data.root.Position).Magnitude)
-					if dist <= LOCK_RANGE * 1.5 then
-						data.gui.Enabled = true
-						if lockedTargetPart and lockedTargetPart.Parent == model then
-							data.label.Text = "★ [ ЦЕЛЬ ] ★\n[" .. dist .. "m]"
-							data.label.TextColor3 = Color3.fromRGB(40, 255, 80)
-						else
-							data.label.Text = model.Name .. "\n[" .. dist .. "m]"
-							data.label.TextColor3 = Color3.fromRGB(255, 80, 80)
-						end
-					else
-						data.gui.Enabled = false
-					end
-				end
-			end
-		end
-	end
-
 	if not isLockOnEnabled then return end
 
 	if not isTargetValid() then
@@ -532,4 +540,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 updateCharges()
-print("[Xeno] Optimized JJS Script loaded without FPS drops!")
+print("[Xeno] Stable JJS Script loaded!")
