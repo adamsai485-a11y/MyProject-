@@ -2,7 +2,6 @@ local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
@@ -28,7 +27,7 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Smooth Back-Dash [3]"
+title.Text = "JJS Legit Phys-Dash [3]"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 14
 title.Font = Enum.Font.GothamBold
@@ -50,7 +49,7 @@ toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 toggleDashBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleDashBtn.TextSize = 13
 toggleDashBtn.Font = Enum.Font.GothamBold
-toggleDashBtn.Text = "Сайд-дэш по [3]: ВЫКЛ"
+toggleDashBtn.Text = "Леджит дэш по [3]: ВЫКЛ"
 toggleDashBtn.Parent = mainFrame
 Instance.new("UICorner", toggleDashBtn).CornerRadius = UDim.new(0, 6)
 
@@ -75,7 +74,7 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Лок-он держит ядро. [3] — плавный и ровный телепорт/дэш за спину."
+infoLabel.Text = "Мягкий физический дэш за спину без телепортации и палева."
 infoLabel.Parent = mainFrame
 
 -- Функция поиска ближайшего игрока
@@ -109,10 +108,10 @@ toggleDashBtn.MouseButton1Click:Connect(function()
 	isDashEnabled = not isDashEnabled
 	if isDashEnabled then
 		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-		toggleDashBtn.Text = "Сайд-дэш по [3]: ВКЛ"
+		toggleDashBtn.Text = "Леджит дэш по [3]: ВКЛ"
 	else
 		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-		toggleDashBtn.Text = "Сайд-дэш по [3]: ВЫКЛ"
+		toggleDashBtn.Text = "Леджит дэш по [3]: ВЫКЛ"
 	end
 end)
 
@@ -143,7 +142,7 @@ toggleLockBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Рендер: постоянный поворот лицом в ядро врага
+-- Рендер: плавная (но не резкая) доводка взгляда в ядро врага
 RunService.RenderStepped:Connect(function()
 	if isLockOnEnabled then
 		if lockedTargetPart and lockedTargetPart.Parent and lockedTargetPart.Parent:FindFirstChild("Humanoid") and lockedTargetPart.Parent.Humanoid.Health > 0 then
@@ -153,7 +152,9 @@ RunService.RenderStepped:Connect(function()
 				local targetPos = lockedTargetPart.Position
 				
 				local flatTargetPos = Vector3.new(targetPos.X, myRoot.Position.Y, targetPos.Z)
-				myRoot.CFrame = CFrame.lookAt(myRoot.Position, flatTargetPos)
+				-- Плавный поворот через CFrame.lerp, чтобы не было резких дерганий камеры/модели
+				local goalCFrame = CFrame.lookAt(myRoot.Position, flatTargetPos)
+				myRoot.CFrame = myRoot.CFrame:Lerp(goalCFrame, 0.2)
 			end
 		else
 			isLockOnEnabled = false
@@ -164,8 +165,8 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- Функция плавного дэша строго за спину
-local function executeSmoothBackDash()
+-- Функция беспалевного физического дэша за спину
+local function executeLegitDash()
 	if not isDashEnabled or not isLockOnEnabled then return end
 	if isCoolingDown or currentCharges <= 0 then return end
 	
@@ -175,27 +176,26 @@ local function executeSmoothBackDash()
 		
 		if lockedTargetPart and lockedTargetPart.Parent then
 			currentCharges = currentCharges - 1
-			print("[Xeno] Плавный дэш за спину! Зарядов осталось:", currentCharges)
+			print("[Xeno] Физический дэш за спину! Зарядов осталось:", currentCharges)
 			
-			-- Точка за спиной врага: берем позицию врага и смещаемся по его -LookVector (назад) на 5 единиц
+			-- Вычисляем вектор направления: от нас к точке за спиной врага
 			local enemyCFrame = lockedTargetPart.CFrame
-			local backOffset = -enemyCFrame.LookVector * 5 -- 5 стульев/единиц за спину
-			local targetPosition = lockedTargetPart.Position + backOffset
+			local targetBackPos = lockedTargetPart.Position + (-enemyCFrame.LookVector * 4.5)
 			
-			-- Сохраняем высоту персонажа, чтобы не провалиться под текстуры
-			targetPosition = Vector3.new(targetPosition.X, rootPart.Position.Y, targetPosition.Z)
+			-- Направление рывка именно по физике (скорость задается мягким импульсом)
+			local directionToBack = (targetBackPos - rootPart.Position)
+			local distance = directionToBack.Magnitude
+			directionToBack = directionToBack.Unit
 			
-			-- Создаем идеально плавный твин (движение) за спину за 0.12 секунды
-			local tweenInfo = TweenInfo.new(
-				0.12, -- Время рывка (быстро, но плавно)
-				Enum.EasingStyle.Quad,
-				Enum.EasingDirection.Out
-			)
+			local bodyVelocity = Instance.new("BodyVelocity")
+			bodyVelocity.MaxForce = Vector3.new(300000, 0, 300000) -- Тянем только по плоскости XZ, не трогая прыжки
+			bodyVelocity.Velocity = directionToBack * math.min(distance * 18, 65) -- Скорость зависит от расстояния, но имеет лимит
+			bodyVelocity.Parent = rootPart
 			
-			-- Одновременно двигаем позицию и смотрим на ядро врага
-			local targetCFrame = CFrame.lookAt(targetPosition, Vector3.new(lockedTargetPart.Position.X, targetPosition.Y, lockedTargetPart.Position.Z))
-			local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
-			tween:Play()
+			-- Быстро отключаем импульс, чтобы персонаж проскользил ровно сколько нужно и остановился сам
+			task.delay(0.14, function()
+				if bodyVelocity then bodyVelocity:Destroy() end
+			end)
 			
 			-- Кулдаун зарядов
 			if currentCharges <= 0 then
@@ -207,7 +207,7 @@ local function executeSmoothBackDash()
 					currentCharges = maxCharges
 					isCoolingDown = false
 					if isDashEnabled then
-						toggleDashBtn.Text = "Сайд-дэш по [3]: ВКЛ"
+						toggleDashBtn.Text = "Леджит дэш по [3]: ВКЛ"
 						toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
 					end
 					print("[Xeno] Заряды восстановлены.")
@@ -221,9 +221,9 @@ end
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed then
 		if input.KeyCode == Enum.KeyCode.Three or input.KeyCode == Enum.KeyCode.KeypadThree then
-			executeSmoothBackDash()
+			executeLegitDash()
 		end
 	end
 end)
 
-print("[Xeno] Скрипт плавного дэша загружен!")
+print("[Xeno] Леджит-скрипт загружен!")
