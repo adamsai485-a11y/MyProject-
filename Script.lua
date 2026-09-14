@@ -1,6 +1,6 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (ULTIMATE VERSION)
--- Players + NPC/Dummy support + Draggable GUI + K Toggle + Prediction + Raycast
+-- JJS LOCK-ON + BACK DASH (ULTIMATE + ESP RADAR VERSION)
+-- Players + NPC/Dummy support + Draggable GUI + K Toggle + Prediction + Raycast + ESP
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -31,15 +31,19 @@ local LOCK_SMOOTHNESS = 0.10
 local TOGGLE_UI_KEY = Enum.KeyCode.K
 
 --==================================================
--- УДАЛЯЕМ СТАРОЕ МЕНЮ
+-- УДАЛЯЕМ СТАРОЕ МЕНЮ И ESP
 --==================================================
 
 if CoreGui:FindFirstChild("XenoJJSMenu") then
 	CoreGui.XenoJJSMenu:Destroy()
 end
 
+if CoreGui:FindFirstChild("XenoJJSESP") then
+	CoreGui.XenoJJSESP:Destroy()
+end
+
 --==================================================
--- GUI
+-- GUI МЕНЮ
 --==================================================
 
 local screenGui = Instance.new("ScreenGui")
@@ -65,7 +69,7 @@ mainCorner.Parent = mainFrame
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Human Dash [3] (K - меню)"
+title.Text = "JJS Dash + ESP [3] (K - меню)"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 13
 title.Font = Enum.Font.GothamBold
@@ -123,7 +127,7 @@ local isCoolingDown = false
 local isDashing = false
 
 --==================================================
--- КНОПКА BACK DASH
+-- КНОПКИ И МЕТКИ МЕНЮ
 --==================================================
 
 local toggleDashBtn = Instance.new("TextButton")
@@ -140,10 +144,6 @@ local dashCorner = Instance.new("UICorner")
 dashCorner.CornerRadius = UDim.new(0, 6)
 dashCorner.Parent = toggleDashBtn
 
---==================================================
--- КНОПКА LOCK-ON
---==================================================
-
 local toggleLockBtn = Instance.new("TextButton")
 toggleLockBtn.Size = UDim2.new(1, -20, 0, 40)
 toggleLockBtn.Position = UDim2.new(0, 10, 0, 88)
@@ -158,10 +158,6 @@ local lockCorner = Instance.new("UICorner")
 lockCorner.CornerRadius = UDim.new(0, 6)
 lockCorner.Parent = toggleLockBtn
 
---==================================================
--- СТАТУС ЦЕЛИ
---==================================================
-
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -20, 0, 22)
 statusLabel.Position = UDim2.new(0, 10, 0, 135)
@@ -171,10 +167,6 @@ statusLabel.TextSize = 11
 statusLabel.Font = Enum.Font.Gotham
 statusLabel.Text = "Цель: нет"
 statusLabel.Parent = mainFrame
-
---==================================================
--- ЗАРЯДЫ
---==================================================
 
 local chargesLabel = Instance.new("TextLabel")
 chargesLabel.Size = UDim2.new(1, -20, 0, 20)
@@ -186,10 +178,6 @@ chargesLabel.Font = Enum.Font.Gotham
 chargesLabel.Text = "Заряды: 4 / 4"
 chargesLabel.Parent = mainFrame
 
---==================================================
--- ИНФОРМАЦИЯ
---==================================================
-
 local infoLabel = Instance.new("TextLabel")
 infoLabel.Size = UDim2.new(1, -20, 0, 70)
 infoLabel.Position = UDim2.new(0, 10, 0, 182)
@@ -198,76 +186,130 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Предикт + Raycast + Перетаскивание за заголовок. Нажми K чтобы скрыть меню."
+infoLabel.Text = "Включен Радар/ESP над врагами. Нажми K чтобы скрыть меню."
 infoLabel.Parent = mainFrame
 
 --==================================================
--- ФУНКЦИИ ПРОВЕРКИ ВИДИМОСТИ (RAYCAST)
+-- ESP / РАДАР СИСТЕМА
 --==================================================
 
-local function isVisible(targetPart)
-	local character = LocalPlayer.Character
-	if not character then return false end
-	local myRoot = character:FindFirstChild("HumanoidRootPart")
-	if not myRoot then return false end
+local espGui = Instance.new("ScreenGui")
+espGui.Name = "XenoJJSESP"
+espGui.ResetOnSpawn = false
+espGui.Parent = CoreGui
 
-	local origin = myRoot.Position
-	local direction = (targetPart.Position - origin)
+local activeBillboards = {}
 
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-	raycastParams.FilterDescendantsInstances = {character, targetPart.Parent}
-	raycastParams.IgnoreWater = true
-
-	local result = workspace:Raycast(origin, direction, raycastParams)
-	if result then
-		-- Преграда на пути
-		return false
+local function removeEspForModel(model)
+	if activeBillboards[model] then
+		activeBillboards[model]:Destroy()
+		activeBillboards[model] = nil
 	end
-	return true
+end
+
+local function updateEsp()
+	local character = LocalPlayer.Character
+	if not character then return end
+	local myRoot = character:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return end
+
+	local currentModels = {}
+
+	-- Собираем всех валидных живых персонажей/NPC в радиусе
+	local function checkAndAdd(model)
+		local humanoid = model:FindFirstChildOfClass("Humanoid")
+		local root = model:FindFirstChild("HumanoidRootPart")
+		if humanoid and humanoid.Health > 0 and root and model ~= character then
+			local dist = (myRoot.Position - root.Position).Magnitude
+			if dist <= LOCK_RANGE * 1.5 then
+				currentModels[model] = root
+			end
+		end
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then checkAndAdd(player.Character) end
+	end
+
+	for _, desc in ipairs(workspace:GetDescendants()) do
+		if desc:IsA("Humanoid") and desc.Parent and desc.Parent:IsA("Model") then
+			checkAndAdd(desc.Parent)
+		end
+	end
+
+	-- Удаляем старые, которых больше нет рядом
+	for model, billboard in pairs(activeBillboards) do
+		if not currentModels[model] then
+			removeEspForModel(model)
+		end
+	end
+
+	-- Создаем или обновляем BillboardGui для каждого
+	for model, root in pairs(currentModels) do
+		local billboard = activeBillboards[model]
+		if not billboard then
+			billboard = Instance.new("BillboardGui")
+			billboard.Name = "ESPTag"
+			billboard.Size = UDim2.new(0, 120, 0, 40)
+			billboard.StudsOffset = Vector3.new(0, 2.8, 0)
+			billboard.AlwaysOnTop = true
+
+			local label = Instance.new("TextLabel")
+			label.Name = "Text"
+			label.Size = UDim2.new(1, 0, 1, 0)
+			label.BackgroundTransparency = 1
+			label.TextSize = 11
+			label.Font = Enum.Font.GothamBold
+			label.TextColor3 = Color3.fromRGB(255, 80, 80)
+			label.TextStrokeTransparency = 0.5
+			label.Parent = billboard
+
+			billboard.Adornee = root
+			billboard.Parent = espGui
+			activeBillboards[model] = billboard
+		end
+
+		local label = billboard:FindFirstChild("Text")
+		if label then
+			local dist = math.floor((myRoot.Position - root.Position).Magnitude)
+			if lockedTargetPart and lockedTargetPart.Parent == model then
+				label.Text = "★ [ ЦЕЛЬ ] ★\n[" .. dist .. "m]"
+				label.TextColor3 = Color3.fromRGB(40, 255, 80)
+			else
+				label.Text = model.Name .. "\n[" .. dist .. "m]"
+				label.TextColor3 = Color3.fromRGB(255, 80, 80)
+			end
+		end
+	end
 end
 
 --==================================================
--- ПОЛУЧЕНИЕ ROOT PART
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ROOT, TARGET)
 --==================================================
 
 local function getRootPart(model)
 	if not model or not model:IsA("Model") then return nil end
-
 	local root = model:FindFirstChild("HumanoidRootPart")
 	if root and root:IsA("BasePart") then return root end
-
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if humanoid and humanoid.RootPart then return humanoid.RootPart end
-
-	if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then
-		return model.PrimaryPart
-	end
-
+	if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then return model.PrimaryPart end
 	return nil
 end
 
 local function getTargetFromModel(model)
 	if not model or not model:IsA("Model") then return nil end
 	if LocalPlayer.Character == model then return nil end
-
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return nil end
-
 	local root = getRootPart(model)
 	if not root then return nil end
-
 	return root
 end
-
---==================================================
--- ПОИСК БЛИЖАЙШЕЙ ЦЕЛИ
---==================================================
 
 local function getBestTarget()
 	local character = LocalPlayer.Character
 	if not character then return nil end
-
 	local myRoot = getRootPart(character)
 	if not myRoot then return nil end
 
@@ -275,7 +317,6 @@ local function getBestTarget()
 	local shortestDistance = LOCK_RANGE
 	local checkedModels = {}
 
-	-- Игроки
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character then
 			local model = player.Character
@@ -293,7 +334,6 @@ local function getBestTarget()
 		end
 	end
 
-	-- NPC / Dummy
 	for _, descendant in ipairs(workspace:GetDescendants()) do
 		if descendant:IsA("Humanoid") then
 			local model = descendant.Parent
@@ -320,7 +360,6 @@ local function isTargetValid()
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return false end
 	
-	-- Проверка дистанции
 	local character = LocalPlayer.Character
 	if character then
 		local myRoot = getRootPart(character)
@@ -328,7 +367,6 @@ local function isTargetValid()
 			return false
 		end
 	end
-	
 	return true
 end
 
@@ -337,7 +375,7 @@ local function updateCharges()
 end
 
 --==================================================
--- LOCK-ON TOGGLE
+-- КНОПКИ УПРАВЛЕНИЯ ЛОКОМ И ДЭШЕМ
 --==================================================
 
 toggleLockBtn.MouseButton1Click:Connect(function()
@@ -377,7 +415,7 @@ toggleDashBtn.MouseButton1Click:Connect(function()
 end)
 
 --==================================================
--- BACK DASH (С УЧЕТОМ PREDICTION)
+-- BACK DASH С ПРЕДИКШЕНОМ
 --==================================================
 
 local function executeBackDash()
@@ -402,10 +440,8 @@ local function executeBackDash()
 	local targetRoot = lockedTargetPart
 	local startPosition = rootPart.Position
 
-	-- Расчет с предикшеном (упреждением скорости цели)
 	local targetVelocity = targetRoot.AssemblyLinearVelocity or Vector3.zero
 	local predictedPosition = targetRoot.Position + (targetVelocity * 0.12)
-
 	local targetLook = targetRoot.CFrame.LookVector
 	local destination = predictedPosition - targetLook * BACK_DISTANCE
 
@@ -442,7 +478,6 @@ local function executeBackDash()
 		local alpha = math.clamp(elapsed / dashTime, 0, 1)
 		local smoothAlpha = alpha * alpha * (3 - 2 * alpha)
 
-		-- Обновление позиции цели на ходу с предикшеном
 		local curVel = targetRoot.AssemblyLinearVelocity or Vector3.zero
 		local curPredPos = targetRoot.Position + (curVel * 0.1)
 		local curLook = targetRoot.CFrame.LookVector
@@ -479,7 +514,6 @@ local function executeBackDash()
 		end
 	end)
 
-	-- Восстановление зарядов
 	if currentCharges <= 0 then
 		isCoolingDown = true
 		toggleDashBtn.Text = "Заряды восстанавливаются..."
@@ -502,13 +536,15 @@ local function executeBackDash()
 end
 
 --==================================================
--- LOCK-ON RENDER (С АВТОПЕРЕКЛЮЧЕНИЕМ И СТЕНАМИ)
+-- ГЛАВНЫЙ ЦИКЛ (LOCK-ON + ESP UPDATE)
 --==================================================
 
 RunService.RenderStepped:Connect(function()
+	-- Обновляем радар
+	updateEsp()
+
 	if not isLockOnEnabled then return end
 
-	-- Если текущая цель сломалась/умерла, ищем новую
 	if not isTargetValid() then
 		local newTarget = getBestTarget()
 		if newTarget then
@@ -543,7 +579,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --==================================================
--- КЛАВИШИ (3 - дэш, K - скрыть/показать меню)
+-- КЛАВИШИ
 --==================================================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -560,4 +596,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 updateCharges()
-print("[Xeno] Ultimate JJS Lock-on + Back Dash loaded with K-Toggle & Drag!")
+print("[Xeno] JJS Ultimate + ESP Radar loaded!")
