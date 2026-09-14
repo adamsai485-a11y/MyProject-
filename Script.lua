@@ -1,5 +1,5 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (STABLE ESP VERSION)
+-- JJS LOCK-ON + BACK DASH (NO ESP / MAXIMUM FPS)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -25,7 +25,6 @@ local TOGGLE_UI_KEY = Enum.KeyCode.K
 --==================================================
 
 if CoreGui:FindFirstChild("XenoJJSMenu") then CoreGui.XenoJJSMenu:Destroy() end
-if CoreGui:FindFirstChild("XenoJJSESP") then CoreGui.XenoJJSESP:Destroy() end
 
 --==================================================
 -- GUI МЕНЮ
@@ -50,7 +49,7 @@ mainCorner.Parent = mainFrame
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "JJS Dash + Stable ESP [3] (K - меню)"
+title.Text = "JJS Dash + Lock [3] (K - меню)"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 13
 title.Font = Enum.Font.GothamBold
@@ -149,11 +148,11 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Стабильный ESP радар активирован. Нажми K чтобы скрыть меню."
+infoLabel.Text = "Режим без ESP (максимальный FPS). Нажми K чтобы скрыть меню."
 infoLabel.Parent = mainFrame
 
 --==================================================
--- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ROOT, TARGET)
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 --==================================================
 
 local function getRootPart(model)
@@ -175,106 +174,6 @@ local function getTargetFromModel(model)
 	if not root then return nil end
 	return root
 end
-
---==================================================
--- СТАБИЛЬНЫЙ ESP РАДАР (Работает через ScreenGui + Adornee без лагов)
---==================================================
-
-local espGui = Instance.new("ScreenGui")
-espGui.Name = "XenoJJSESP"
-espGui.ResetOnSpawn = false
-espGui.Parent = CoreGui
-
-local activeBillboards = {}
-
-local function updateEsp()
-	local character = LocalPlayer.Character
-	if not character then return end
-	local myRoot = getRootPart(character)
-	if not myRoot then return end
-
-	local currentFoundModels = {}
-
-	-- Функция проверки и добавления цели для ESP
-	local function processModel(model)
-		local root = getTargetFromModel(model)
-		if root then
-			local dist = (myRoot.Position - root.Position).Magnitude
-			if dist <= LOCK_RANGE * 1.5 then
-				currentFoundModels[model] = root
-			end
-		end
-	end
-
-	-- Проверяем игроков
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then processModel(player.Character) end
-	end
-
-	-- Проверяем NPC/Dummy через детей workspace
-	for _, child in ipairs(workspace:GetChildren()) do
-		if child:IsA("Model") and child ~= character then
-			processModel(child)
-		end
-	end
-
-	-- Удаляем старые BillboardGui, если цели пропали или умерли
-	for model, billboard in pairs(activeBillboards) do
-		if not currentFoundModels[model] or not model.Parent then
-			billboard:Destroy()
-			activeBillboards[model] = nil
-		end
-	end
-
-	-- Создаем или обновляем метки
-	for model, root in pairs(currentFoundModels) do
-		local billboard = activeBillboards[model]
-		if not billboard or not billboard.Parent then
-			billboard = Instance.new("BillboardGui")
-			billboard.Name = "ESPTag"
-			billboard.Size = UDim2.new(0, 120, 0, 40)
-			billboard.StudsOffset = Vector3.new(0, 2.8, 0)
-			billboard.AlwaysOnTop = true
-
-			local label = Instance.new("TextLabel")
-			label.Name = "Text"
-			label.Size = UDim2.new(1, 0, 1, 0)
-			label.BackgroundTransparency = 1
-			label.TextSize = 11
-			label.Font = Enum.Font.GothamBold
-			label.TextStrokeTransparency = 0.4
-			label.Parent = billboard
-
-			billboard.Adornee = root
-			billboard.Parent = espGui
-			activeBillboards[model] = billboard
-		end
-
-		local label = billboard:FindFirstChild("Text")
-		if label then
-			local dist = math.floor((myRoot.Position - root.Position).Magnitude)
-			if lockedTargetPart and lockedTargetPart.Parent == model then
-				label.Text = "★ [ ЦЕЛЬ ] ★\n[" .. dist .. "m]"
-				label.TextColor3 = Color3.fromRGB(40, 255, 80)
-			else
-				label.Text = model.Name .. "\n[" .. dist .. "m]"
-				label.TextColor3 = Color3.fromRGB(255, 80, 80)
-			end
-		end
-	end
-end
-
--- Запускаем обновление ESP в фоновом потоке каждые 0.15 секунд (полный ноль лагов для FPS)
-task.spawn(function()
-	while true do
-		pcall(updateEsp)
-		task.wait(0.15)
-	end
-end)
-
---==================================================
--- ПОИСК ЛУЧШЕЙ ЦЕЛИ ДЛЯ ЛОКА
---==================================================
 
 local function getBestTarget()
 	local character = LocalPlayer.Character
@@ -455,7 +354,7 @@ local function executeBackDash()
 			local finalLook = targetRoot.CFrame.LookVector
 			local finalPosition = finalPredPos - finalLook * BACK_DISTANCE
 			finalPosition = Vector3.new(finalPosition.X, startPosition.Y, finalPosition.Z)
-			local finalLookAt = Vector3.new(finalPredPos.X, finalPosition.Y, finalPredPos.Z)
+			local finalLookAt = Vector3.new(finalPredPos.X, finalPosition.Y, finalPosition.Z)
 
 			rootPart.CFrame = CFrame.lookAt(finalPosition, finalLookAt)
 			rootPart.AssemblyLinearVelocity = Vector3.zero
@@ -540,4 +439,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 updateCharges()
-print("[Xeno] Stable JJS Script loaded!")
+print("[Xeno] Ultra-light JJS Script loaded without ESP (Maximum FPS)!")
