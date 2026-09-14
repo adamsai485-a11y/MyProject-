@@ -1,5 +1,5 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (NO ESP / CLEAN VERSION)
+-- JJS LOCK-ON + BACK DASH (CLEAR VERSION)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -21,10 +21,14 @@ local LOCK_SMOOTHNESS = 0.10
 local TOGGLE_UI_KEY = Enum.KeyCode.K
 
 --==================================================
--- ОЧИСТКА СТАРОГО
+-- ПОЛНАЯ ОЧИСТКА СТАРОГО GUI
 --==================================================
 
-if CoreGui:FindFirstChild("XenoJJSMenu") then CoreGui.XenoJJSMenu:Destroy() end
+for _, gui in ipairs(CoreGui:GetChildren()) do
+	if gui.Name == "XenoJJSMenu" then
+		gui:Destroy()
+	end
+end
 
 --==================================================
 -- GUI МЕНЮ
@@ -55,7 +59,7 @@ title.TextSize = 13
 title.Font = Enum.Font.GothamBold
 title.Parent = mainFrame
 
--- Перетаскивание
+-- Перетаскивание меню
 local dragging, dragInput, dragStart, startPos
 title.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -95,7 +99,7 @@ local isCoolingDown = false
 local isDashing = false
 
 --==================================================
--- КНОПКИ
+-- ЭЛЕМЕНТЫ ИНТЕРФЕЙСА
 --==================================================
 
 local toggleDashBtn = Instance.new("TextButton")
@@ -148,7 +152,7 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "ESP полностью удален (чистый FPS). Нажми K чтобы скрыть меню."
+infoLabel.Text = "Чистый скрипт (без ESP и лагов). Нажми K чтобы скрыть меню."
 infoLabel.Parent = mainFrame
 
 --==================================================
@@ -237,7 +241,7 @@ local function updateCharges()
 end
 
 --==================================================
--- КНОПКИ УПРАВЛЕНИЯ
+-- ОБРАБОТЧИКИ КНОПОК МЕНЮ
 --==================================================
 
 toggleLockBtn.MouseButton1Click:Connect(function()
@@ -409,6 +413,7 @@ RunService.RenderStepped:Connect(function()
 
 	local character = LocalPlayer.Character
 	if not character then return end
+	local myRoot = getRootRootPart(character) -- исправление на getRootPart ниже
 	local myRoot = getRootPart(character)
 	if not myRoot then return end
 
@@ -425,7 +430,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --==================================================
--- КЛАВИШИ
+-- ГОРЯЧИЕ КЛАВИШИ
 --==================================================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -439,4 +444,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 updateCharges()
-print("[Xeno] Clean JJS Script loaded without ESP!")
+print("[Xeno] Clean script successfully executed without ESP!")
