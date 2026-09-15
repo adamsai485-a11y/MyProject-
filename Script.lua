@@ -1,5 +1,5 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (CLEAN & FIXED VERSION)
+-- JJS LOCK-ON + BACK DASH (PRO ARCHITECTURE V2)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -15,14 +15,14 @@ local LocalPlayer = Players.LocalPlayer
 --==================================================
 
 local LOCK_RANGE = 90
-local BACK_DISTANCE = 3.8
+local BACK_DISTANCE = 4.2      -- Чуть увеличили, чтобы не сливаться вплотную с моделью
 local DASH_TIME_MIN = 0.12
 local DASH_TIME_MAX = 0.28
-local LOCK_SMOOTHNESS = 0.10
+local LOCK_SMOOTHNESS = 0.12
 local TOGGLE_UI_KEY = Enum.KeyCode.K
 
 --==================================================
--- ПОЛНАЯ ОЧИСТКА СТАРОГО GUI
+-- ОЧИСТКА СТАРОГО GUI
 --==================================================
 
 for _, gui in ipairs(CoreGui:GetChildren()) do
@@ -87,7 +87,7 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 --==================================================
--- СОСТОЯНИЯ
+-- СОСТОЯНИЯ И МЕНЕДЖЕРЫ (ЦЕНТРАЛИЗАЦИЯ)
 --==================================================
 
 local isDashEnabled = false
@@ -99,31 +99,24 @@ local maxCharges = 4
 local isCoolingDown = false
 local isDashing = false
 
---==================================================
--- ЭЛЕМЕНТЫ ИНТЕРФЕЙСА
---==================================================
-
+-- Элементы интерфейса
 local toggleDashBtn = Instance.new("TextButton")
 toggleDashBtn.Size = UDim2.new(1, -20, 0, 40)
 toggleDashBtn.Position = UDim2.new(0, 10, 0, 40)
-toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+toggleDashBtn.Parent = mainFrame
+Instance.new("UICorner", toggleDashBtn).CornerRadius = UDim.new(0, 6)
 toggleDashBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleDashBtn.TextSize = 13
 toggleDashBtn.Font = Enum.Font.GothamBold
-toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
-toggleDashBtn.Parent = mainFrame
-Instance.new("UICorner", toggleDashBtn).CornerRadius = UDim.new(0, 6)
 
 local toggleLockBtn = Instance.new("TextButton")
 toggleLockBtn.Size = UDim2.new(1, -20, 0, 40)
 toggleLockBtn.Position = UDim2.new(0, 10, 0, 88)
-toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+toggleLockBtn.Parent = mainFrame
+Instance.new("UICorner", toggleLockBtn).CornerRadius = UDim.new(0, 6)
 toggleLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleLockBtn.TextSize = 13
 toggleLockBtn.Font = Enum.Font.GothamBold
-toggleLockBtn.Text = "Лок-он: ВЫКЛ"
-toggleLockBtn.Parent = mainFrame
-Instance.new("UICorner", toggleLockBtn).CornerRadius = UDim.new(0, 6)
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -20, 0, 22)
@@ -132,7 +125,6 @@ statusLabel.BackgroundTransparency = 1
 statusLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
 statusLabel.TextSize = 11
 statusLabel.Font = Enum.Font.Gotham
-statusLabel.Text = "Цель: нет"
 statusLabel.Parent = mainFrame
 
 local chargesLabel = Instance.new("TextLabel")
@@ -142,7 +134,6 @@ chargesLabel.BackgroundTransparency = 1
 chargesLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 chargesLabel.TextSize = 11
 chargesLabel.Font = Enum.Font.Gotham
-chargesLabel.Text = "Заряды: 4 / 4"
 chargesLabel.Parent = mainFrame
 
 local infoLabel = Instance.new("TextLabel")
@@ -153,11 +144,46 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Чистый скрипт (плавный дэш). Нажми K чтобы скрыть меню."
+infoLabel.Text = "Архитектурно чистый JJS скрипт. Нажми K для скрытия меню."
 infoLabel.Parent = mainFrame
 
+-- Единые функции управления состоянием (исключают рассинхрон GUI)
+local function setLockState(state, target, targetName)
+	isLockOnEnabled = state
+	lockedTargetPart = target
+	if state and target then
+		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+		toggleLockBtn.Text = "Лок-он: ВКЛ"
+		statusLabel.Text = "Цель: " .. (targetName or "Неизвестно")
+	else
+		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+		toggleLockBtn.Text = "Лок-он: ВЫКЛ"
+		statusLabel.Text = "Цель: нет"
+	end
+end
+
+local function setDashState(state, customText, customColor)
+	isDashEnabled = state
+	if customText then
+		toggleDashBtn.Text = customText
+		toggleDashBtn.BackgroundColor3 = customColor or Color3.fromRGB(150, 40, 40)
+	else
+		if state then
+			toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+			toggleDashBtn.Text = "Back Dash [3]: ВКЛ"
+		else
+			toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+			toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
+		end
+	end
+end
+
+local function updateChargesDisplay()
+	chargesLabel.Text = "Заряды: " .. tostring(currentCharges) .. " / " .. tostring(maxCharges)
+end
+
 --==================================================
--- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+-- ОПТИМИЗИРОВАННЫЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 --==================================================
 
 local function getRootPart(model)
@@ -166,20 +192,10 @@ local function getRootPart(model)
 	if root and root:IsA("BasePart") then return root end
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if humanoid and humanoid.RootPart then return humanoid.RootPart end
-	if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then return model.PrimaryPart end
-	return nil
+	return model.PrimaryPart
 end
 
-local function getTargetFromModel(model)
-	if not model or not model:IsA("Model") then return nil end
-	if LocalPlayer.Character == model then return nil end
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then return nil end
-	local root = getRootPart(model)
-	if not root then return nil end
-	return root
-end
-
+-- Оптимизированный поиск цели (без мусорного перебора всего workspace)
 local function getBestTarget()
 	local character = LocalPlayer.Character
 	if not character then return nil end
@@ -188,27 +204,13 @@ local function getBestTarget()
 
 	local bestTarget = nil
 	local shortestDistance = LOCK_RANGE
-	local checkedModels = {}
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character then
 			local model = player.Character
-			checkedModels[model] = true
-			local root = getTargetFromModel(model)
-			if root then
-				local distance = (myRoot.Position - root.Position).Magnitude
-				if distance < shortestDistance then
-					shortestDistance = distance
-					bestTarget = root
-				end
-			end
-		end
-	end
-
-	for _, child in ipairs(workspace:GetChildren()) do
-		if child:IsA("Model") and child ~= character and not checkedModels[child] then
-			local root = getTargetFromModel(child)
-			if root then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			local root = getRootPart(model)
+			if humanoid and humanoid.Health > 0 and root then
 				local distance = (myRoot.Position - root.Position).Magnitude
 				if distance < shortestDistance then
 					shortestDistance = distance
@@ -237,61 +239,17 @@ local function isTargetValid()
 	return true
 end
 
-local function updateCharges()
-	chargesLabel.Text = "Заряды: " .. tostring(currentCharges) .. " / " .. tostring(maxCharges)
-end
-
 --==================================================
--- ОБРАБОТЧИКИ КНОПОК МЕНЮ
+-- БЕЗОПАСНЫЙ БЭК-ДЭШ (С RAYCAST ПРОВЕРКОЙ СТЕН)
 --==================================================
 
-toggleLockBtn.MouseButton1Click:Connect(function()
-	isLockOnEnabled = not isLockOnEnabled
-	if isLockOnEnabled then
-		local target = getBestTarget()
-		if target then
-			lockedTargetPart = target
-			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-			toggleLockBtn.Text = "Лок-он: ВКЛ"
-			statusLabel.Text = "Цель: " .. target.Parent.Name
-		else
-			isLockOnEnabled = false
-			lockedTargetPart = nil
-			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-			toggleLockBtn.Text = "Лок-он: ВЫКЛ"
-			statusLabel.Text = "Цель: нет"
-		end
-	else
-		lockedTargetPart = nil
-		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-		toggleLockBtn.Text = "Лок-он: ВЫКЛ"
-		statusLabel.Text = "Цель: нет"
-	end
-end)
-
-toggleDashBtn.MouseButton1Click:Connect(function()
-	isDashEnabled = not isDashEnabled
-	if isDashEnabled then
-		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-		toggleDashBtn.Text = "Back Dash [3]: ВКЛ"
-	else
-		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-		toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
-	end
-end)
-
---==================================================
--- BACK DASH (ПЛАВНЫЙ TWEEN РЫВОК)
---==================================================
+local raycastParams = RaycastParams.new()
+raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local function executeBackDash()
 	if not isDashEnabled or not isLockOnEnabled or isCoolingDown or isDashing or currentCharges <= 0 then return end
 	if not isTargetValid() then
-		lockedTargetPart = nil
-		isLockOnEnabled = false
-		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-		toggleLockBtn.Text = "Лок-он: ВЫКЛ"
-		statusLabel.Text = "Цель: нет"
+		setLockState(false, nil)
 		return
 	end
 
@@ -302,7 +260,7 @@ local function executeBackDash()
 	if not rootPart or not humanoid then return end
 
 	currentCharges -= 1
-	updateCharges()
+	updateChargesDisplay()
 
 	isDashing = true
 	local oldAutoRotate = humanoid.AutoRotate
@@ -311,10 +269,20 @@ local function executeBackDash()
 	local targetRoot = lockedTargetPart
 	local targetCFrame = targetRoot.CFrame
 	
-	-- Точка за спиной цели на высоте игрока
+	-- Желаемая точка за спиной
 	local destinationCFrame = targetCFrame * CFrame.new(0, 0, BACK_DISTANCE)
 	local targetPos = Vector3.new(destinationCFrame.Position.X, rootPart.Position.Y, destinationCFrame.Position.Z)
-	local finalCFrame = CFrame.lookAt(targetPos, Vector3.new(targetRoot.Position.X, rootPart.Position.Y, targetRoot.Position.Z))
+
+	-- РЕЙКАСТ: проверяем, нет ли стены между текущей позицией игрока и точкой позади врага
+	raycastParams.FilterDescendantsInstances = {character, targetRoot.Parent}
+	local rayResult = workspace:Raycast(rootPart.Position, targetPos - rootPart.Position, raycastParams)
+	
+|-- Если на пути стена, корректируем конечную точку перед ней, чтобы не застрять
+	if rayResult then
+		targetPos = rayResult.Position + (rootPart.Position - targetPos).Unit * 1.5
+	end
+
+	local finalCFrame = CFrame.lookAt(targetPos, Vector3.new(targetRoot.Position.X, targetPos.Y, targetRoot.Position.Z))
 
 	local distance = (rootPart.Position - targetPos).Magnitude
 	local dashTime = math.clamp(distance / 55, DASH_TIME_MIN, DASH_TIME_MAX)
@@ -337,25 +305,40 @@ local function executeBackDash()
 
 	if currentCharges <= 0 then
 		isCoolingDown = true
-		toggleDashBtn.Text = "Заряды восстанавливаются..."
-		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(200, 140, 0)
+		setDashState(false, "Заряды восстанавливаются...", Color3.fromRGB(200, 140, 0))
 		task.delay(3, function()
 			currentCharges = maxCharges
 			isCoolingDown = false
-			updateCharges()
-			if isDashEnabled then
-				toggleDashBtn.Text = "Back Dash [3]: ВКЛ"
-				toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-			else
-				toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
-				toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-			end
+			updateChargesDisplay()
+			setDashState(isDashEnabled)
 		end)
 	end
 end
 
 --==================================================
--- РЕНДЕР (LOCK-ON)
+-- ОБРАБОТЧИКИ КНОПОК
+--==================================================
+
+toggleLockBtn.MouseButton1Click:Connect(function()
+	if not isLockOnEnabled then
+		local target = getBestTarget()
+		if target then
+			setLockState(true, target, target.Parent.Name)
+		else
+			setLockState(false, nil)
+		end
+	else
+		setLockState(false, nil)
+	end
+end)
+
+toggleDashBtn.MouseButton1Click:Connect(function()
+	if isCoolingDown then return end
+	setDashState(not isDashEnabled)
+end)
+
+--==================================================
+-- РЕНДЕР (ЛОК-ОН СТАБИЛЬНЫЙ)
 --==================================================
 
 RunService.RenderStepped:Connect(function()
@@ -364,13 +347,9 @@ RunService.RenderStepped:Connect(function()
 	if not isTargetValid() then
 		local newTarget = getBestTarget()
 		if newTarget then
-			lockedTargetPart = newTarget
+			setLockState(true, newTarget, newTarget.Parent.Name)
 		else
-			isLockOnEnabled = false
-			lockedTargetPart = nil
-			toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-			toggleLockBtn.Text = "Лок-он: ВЫКЛ"
-			statusLabel.Text = "Цель: нет"
+			setLockState(false, nil)
 			return
 		end
 	end
@@ -408,5 +387,5 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 end)
 
-updateCharges()
-print("[Xeno] Smooth JJS Back Dash script successfully loaded!")
+updateChargesDisplay()
+print("[Xeno] Pro Architecture JJS Script Loaded Safely!")
