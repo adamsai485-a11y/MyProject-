@@ -1,11 +1,12 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (CLEAR VERSION)
+-- JJS LOCK-ON + BACK DASH (CLEAN & FIXED VERSION)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -152,7 +153,7 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Чистый скрипт (без ESP и лагов). Нажми K чтобы скрыть меню."
+infoLabel.Text = "Чистый скрипт (плавный дэш). Нажми K чтобы скрыть меню."
 infoLabel.Parent = mainFrame
 
 --==================================================
@@ -280,7 +281,7 @@ toggleDashBtn.MouseButton1Click:Connect(function()
 end)
 
 --==================================================
--- BACK DASH
+-- BACK DASH (ПЛАВНЫЙ TWEEN РЫВОК)
 --==================================================
 
 local function executeBackDash()
@@ -297,77 +298,42 @@ local function executeBackDash()
 	local character = LocalPlayer.Character
 	if not character then return end
 	local rootPart = getRootPart(character)
-	if not rootPart then return end
-
-	local targetRoot = lockedTargetPart
-	local startPosition = rootPart.Position
-
-	local targetVelocity = targetRoot.AssemblyLinearVelocity or Vector3.zero
-	local predictedPosition = targetRoot.Position + (targetVelocity * 0.12)
-	local targetLook = targetRoot.CFrame.LookVector
-	local destination = predictedPosition - targetLook * BACK_DISTANCE
-	destination = Vector3.new(destination.X, startPosition.Y, destination.Z)
-
-	local initialDistance = (destination - startPosition).Magnitude
-	if initialDistance < 0.5 then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not rootPart or not humanoid then return end
 
 	currentCharges -= 1
 	updateCharges()
 
 	isDashing = true
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local oldAutoRotate = nil
-	if humanoid then
-		oldAutoRotate = humanoid.AutoRotate
-		humanoid.AutoRotate = false
-	end
+	local oldAutoRotate = humanoid.AutoRotate
+	humanoid.AutoRotate = false
 
-	local dashTime = math.clamp(initialDistance / 45, DASH_TIME_MIN, DASH_TIME_MAX)
-	local startTime = os.clock()
-	local connection
+	local targetRoot = lockedTargetPart
+	local targetCFrame = targetRoot.CFrame
+	
+	-- Точка за спиной цели на высоте игрока
+	local destinationCFrame = targetCFrame * CFrame.new(0, 0, BACK_DISTANCE)
+	local targetPos = Vector3.new(destinationCFrame.Position.X, rootPart.Position.Y, destinationCFrame.Position.Z)
+	local finalCFrame = CFrame.lookAt(targetPos, Vector3.new(targetRoot.Position.X, rootPart.Position.Y, targetRoot.Position.Z))
 
-	connection = RunService.Heartbeat:Connect(function()
-		if not rootPart or not rootPart.Parent or not isTargetValid() then
-			connection:Disconnect()
-			isDashing = false
-			if humanoid and humanoid.Parent then humanoid.AutoRotate = oldAutoRotate end
-			return
-		end
+	local distance = (rootPart.Position - targetPos).Magnitude
+	local dashTime = math.clamp(distance / 55, DASH_TIME_MIN, DASH_TIME_MAX)
 
-		local elapsed = os.clock() - startTime
-		local alpha = math.clamp(elapsed / dashTime, 0, 1)
-		local smoothAlpha = alpha * alpha * (3 - 2 * alpha)
+	local tweenInfo = TweenInfo.new(
+		dashTime,
+		Enum.EasingStyle.Cubic,
+		Enum.EasingDirection.Out
+	)
 
-		local curVel = targetRoot.AssemblyLinearVelocity or Vector3.zero
-		local curPredPos = targetRoot.Position + (curVel * 0.1)
-		local curLook = targetRoot.CFrame.LookVector
-		local currentBackPosition = curPredPos - curLook * BACK_DISTANCE
-		currentBackPosition = Vector3.new(currentBackPosition.X, startPosition.Y, currentBackPosition.Z)
+	local dashTween = TweenService:Create(rootPart, tweenInfo, {CFrame = finalCFrame})
+	
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	dashTween:Play()
+	dashTween.Completed:Wait()
 
-		local newPosition = startPosition:Lerp(currentBackPosition, smoothAlpha)
-		local lookPosition = Vector3.new(curPredPos.X, newPosition.Y, curPredPos.Z)
-
-		if (lookPosition - newPosition).Magnitude > 0.01 then
-			rootPart.CFrame = CFrame.lookAt(newPosition, lookPosition)
-		else
-			rootPart.CFrame = CFrame.new(newPosition)
-		end
-
-		if alpha >= 1 then
-			local finalPredPos = targetRoot.Position + ((targetRoot.AssemblyLinearVelocity or Vector3.zero) * 0.05)
-			local finalLook = targetRoot.CFrame.LookVector
-			local finalPosition = finalPredPos - finalLook * BACK_DISTANCE
-			finalPosition = Vector3.new(finalPosition.X, startPosition.Y, finalPosition.Z)
-			local finalLookAt = Vector3.new(finalPredPos.X, finalPosition.Y, finalPosition.Z)
-
-			rootPart.CFrame = CFrame.lookAt(finalPosition, finalLookAt)
-			rootPart.AssemblyLinearVelocity = Vector3.zero
-
-			connection:Disconnect()
-			isDashing = false
-			if humanoid and humanoid.Parent then humanoid.AutoRotate = oldAutoRotate end
-		end
-	end)
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	humanoid.AutoRotate = oldAutoRotate
+	isDashing = false
 
 	if currentCharges <= 0 then
 		isCoolingDown = true
@@ -413,7 +379,6 @@ RunService.RenderStepped:Connect(function()
 
 	local character = LocalPlayer.Character
 	if not character then return end
-	local myRoot = getRootRootPart(character) -- исправление на getRootPart ниже
 	local myRoot = getRootPart(character)
 	if not myRoot then return end
 
@@ -444,4 +409,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 updateCharges()
-print("[Xeno] Clean script successfully executed without ESP!")
+print("[Xeno] Smooth JJS Back Dash script successfully loaded!")
