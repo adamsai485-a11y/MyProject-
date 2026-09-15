@@ -42,44 +42,19 @@ local function executeBackDash()
 	end
 
 	--------------------------------------------------
-	-- СОХРАНЯЕМ СОСТОЯНИЕ
+	-- ЗАРЯД И СОСТОЯНИЕ
 	--------------------------------------------------
-
-	local oldAutoRotate = humanoid.AutoRotate
-	local oldPlatformStand = humanoid.PlatformStand
 
 	State.Charges -= 1
 	updateChargesDisplay()
 
 	State.Dashing = true
 
+	local oldAutoRotate = humanoid.AutoRotate
+	local oldPlatformStand = humanoid.PlatformStand
+	
 	humanoid.AutoRotate = false
-	humanoid.PlatformStand = true
-
-	--------------------------------------------------
-	-- CLEANUP
-	--------------------------------------------------
-
-	local function cleanup()
-		if rootPart and rootPart.Parent then
-			local currentVelocity = rootPart.AssemblyLinearVelocity
-			
-			-- Полностью гасим горизонтальный импульс, 
-			-- оставляя адекватную вертикальную составляющую для гравитации
-			rootPart.AssemblyLinearVelocity = Vector3.new(
-				0,
-				math.min(currentVelocity.Y, 0), -- гасим паразитный взлет вверх при завершении
-				0
-			)
-		end
-
-		if humanoid and humanoid.Parent then
-			humanoid.AutoRotate = oldAutoRotate
-			humanoid.PlatformStand = oldPlatformStand
-		end
-
-		State.Dashing = false
-	end
+	humanoid.PlatformStand = true -- Отключаем стандартный контроллер ходьбы для чистого импульса
 
 	--------------------------------------------------
 	-- ТОЧКА ЗА СПИНОЙ ЦЕЛИ
@@ -96,24 +71,20 @@ local function executeBackDash()
 	)
 
 	--------------------------------------------------
-	-- НАПРАВЛЕНИЕ И РАССТОЯНИЕ
+	-- ПРОВЕРКА ПРЕПЯТСТВИЙ
 	--------------------------------------------------
 
-	local dashVector = targetPosition - rootPart.Position
-	dashVector = Vector3.new(dashVector.X, 0, dashVector.Z)
+	local dashVector =
+		targetPosition - rootPart.Position
 
 	local distance = dashVector.Magnitude
 
 	if distance <= 0.05 then
-		State.Charges += 1
-		updateChargesDisplay()
-		cleanup()
+		humanoid.AutoRotate = oldAutoRotate
+		humanoid.PlatformStand = oldPlatformStand
+		State.Dashing = false
 		return
 	end
-
-	--------------------------------------------------
-	-- ПРОВЕРКА СТЕНЫ (RAYCAST)
-	--------------------------------------------------
 
 	raycastParams.FilterDescendantsInstances = {
 		character,
@@ -127,43 +98,43 @@ local function executeBackDash()
 	)
 
 	if rayResult then
-		local safeDistance = math.max(rayResult.Distance - 1.5, 0)
-		targetPosition = rootPart.Position + dashVector.Unit * safeDistance
-		
-		dashVector = targetPosition - rootPart.Position
-		dashVector = Vector3.new(dashVector.X, 0, dashVector.Z)
-		distance = dashVector.Magnitude
+		local safeDistance = math.max(
+			rayResult.Distance - 1.5,
+			0
+		)
 
-		if distance <= 0.05 then
-			State.Charges += 1
-			updateChargesDisplay()
-			cleanup()
-			return
-		end
+		targetPosition =
+			rootPart.Position
+			+ dashVector.Unit * safeDistance
 	end
 
 	--------------------------------------------------
-	-- РАСЧЕТ СКОРОСТИ
+	-- НАПРАВЛЕНИЕ: ЛИЦОМ К ЦЕЛИ
 	--------------------------------------------------
 
+	local lookPosition = Vector3.new(
+		targetRoot.Position.X,
+		targetPosition.Y,
+		targetRoot.Position.Z
+	)
+
+	--------------------------------------------------
+	-- РАСЧЕТ ВРЕМЕНИ И СКОРОСТИ
+	--------------------------------------------------
+
+	local dashDistance =
+		(rootPart.Position - targetPosition).Magnitude
+
 	local dashTime = math.clamp(
-		distance / DASH_SPEED,
+		dashDistance / DASH_SPEED,
 		DASH_TIME_MIN,
 		DASH_TIME_MAX
 	)
 
-	local dashDirection = dashVector.Unit
-	local actualDashSpeed = distance / dashTime
-	local horizontalVelocity = dashDirection * actualDashSpeed
-
-	rootPart.AssemblyLinearVelocity = Vector3.new(
-		horizontalVelocity.X,
-		rootPart.AssemblyLinearVelocity.Y,
-		horizontalVelocity.Z
-	)
+	rootPart.AssemblyLinearVelocity = Vector3.zero
 
 	--------------------------------------------------
-	-- ФИЗИЧЕСКИЙ DASH С ПРЕРЫВАНИЕМ НА ЛЕТУ
+	-- ЦИКЛ ФИЗИЧЕСКОГО РЫВКА
 	--------------------------------------------------
 
 	local startTime = os.clock()
@@ -177,47 +148,39 @@ local function executeBackDash()
 			break
 		end
 
-		-- Аварийное прерывание, если цель исчезла/умерла прямо во время рывка
-		if not targetRoot or not targetRoot.Parent then
+		local remaining =
+			targetPosition - rootPart.Position
+
+		if remaining.Magnitude > 0.15 then
+			rootPart.AssemblyLinearVelocity =
+				remaining.Unit * (remaining.Magnitude / 0.035)
+		else
 			break
 		end
 
-		local currentY = rootPart.AssemblyLinearVelocity.Y
-		rootPart.AssemblyLinearVelocity = Vector3.new(
-			horizontalVelocity.X,
-			currentY,
-			horizontalVelocity.Z
+		task.wait()
+	end
+
+	--------------------------------------------------
+	-- ФИНАЛ И СБРОС СОСТОЯНИЙ (GARBAGE SAFE)
+	--------------------------------------------------
+
+	if rootPart.Parent then
+		rootPart.AssemblyLinearVelocity = Vector3.zero
+		rootPart.CFrame = CFrame.lookAt(
+			rootPart.Position,
+			lookPosition
 		)
-
-		RunService.Heartbeat:Wait()
 	end
 
-	--------------------------------------------------
-	-- ФИНАЛ
-	--------------------------------------------------
-
-	if rootPart.Parent and targetRoot and targetRoot.Parent then
-		local lookDirection = targetRoot.Position - rootPart.Position
-		lookDirection = Vector3.new(lookDirection.X, 0, lookDirection.Z)
-
-		if lookDirection.Magnitude > 0.05 then
-			rootPart.CFrame = CFrame.lookAt(
-				rootPart.Position,
-				rootPart.Position + lookDirection
-			)
-		end
+	if humanoid.Parent then
+		humanoid.AutoRotate = oldAutoRotate
+		humanoid.PlatformStand = oldPlatformStand
 	end
 
-	cleanup()
+	State.Dashing = false
 
-	--------------------------------------------------
-	-- ВОССТАНОВЛЕНИЕ ЗАРЯДОВ
-	--------------------------------------------------
-
-	if State.Charges <= 0
-		and not State.CoolingDown
-		and not State.Destroyed then
-
+	if State.Charges <= 0 and not State.CoolingDown then
 		startChargeCooldown()
 	end
 end
