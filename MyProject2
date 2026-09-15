@@ -1,18 +1,30 @@
 --==================================================
--- MM2 UTILITY HUB (CLEAN & OPTIMIZED)
+-- MM2 UTILITY HUB
+-- CLEAN / OPTIMIZED VERSION
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
 --==================================================
--- ОЧИСТКА СТАРОГО GUI
+-- ENV / ОЧИСТКА ПРЕДЫДУЩЕГО ЗАПУСКА
 --==================================================
+
+local ENV
+
+if type(getgenv) == "function" then
+	ENV = getgenv()
+else
+	ENV = _G
+end
+
+if type(ENV.MM2UtilityCleanup) == "function" then
+	pcall(ENV.MM2UtilityCleanup)
+end
 
 for _, gui in ipairs(CoreGui:GetChildren()) do
 	if gui.Name == "MM2UtilityMenu" then
@@ -21,12 +33,30 @@ for _, gui in ipairs(CoreGui:GetChildren()) do
 end
 
 --==================================================
--- GUI МЕНЮ
+-- СОСТОЯНИЯ
+--==================================================
+
+local running = true
+local isCoinFarmEnabled = false
+local isAutoGunEnabled = false
+local isMenuVisible = true
+
+local connections = {}
+
+local function connect(signal, callback)
+	local connection = signal:Connect(callback)
+	table.insert(connections, connection)
+	return connection
+end
+
+--==================================================
+-- GUI
 --==================================================
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "MM2UtilityMenu"
 screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = CoreGui
 
 local mainFrame = Instance.new("Frame")
@@ -40,83 +70,118 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
+--==================================================
+-- ЗАГОЛОВОК
+--==================================================
+
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundTransparency = 1
-title.Text = "MM2 Utility Hub (K - меню)"
+title.Text = "MM2 Utility Hub  •  K"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 13
 title.Font = Enum.Font.GothamBold
 title.Parent = mainFrame
 
--- Перетаскивание меню мышкой / пальцем
-local dragging, dragInput, dragStart, startPos
-title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+--==================================================
+-- DRAG GUI
+--==================================================
+
+local dragging = false
+local dragInput = nil
+local dragStart = nil
+local startPos = nil
+
+connect(title.InputBegan, function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
 		dragging = true
 		dragStart = input.Position
 		startPos = mainFrame.Position
+
 		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
 		end)
 	end
 end)
 
-title.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+connect(title.InputChanged, function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+
 		dragInput = input
 	end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
+connect(UserInputService.InputChanged, function(input)
 	if input == dragInput and dragging then
 		local delta = input.Position - dragStart
-		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+
+		mainFrame.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
 	end
 end)
 
 --==================================================
--- СОСТОЯНИЯ
+-- КНОПКА СОЗДАНИЯ
 --==================================================
 
-local isCoinFarmEnabled = false
-local isAutoGunEnabled = false
-local isMenuVisible = true
+local function createButton(parent, position, text)
+	local button = Instance.new("TextButton")
+
+	button.Size = UDim2.new(1, -20, 0, 40)
+	button.Position = position
+	button.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+	button.BorderSizePixel = 0
+
+	button.Text = text
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.TextSize = 13
+	button.Font = Enum.Font.GothamBold
+
+	button.AutoButtonColor = true
+	button.Parent = parent
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = button
+
+	return button
+end
+
+local toggleFarmBtn = createButton(
+	mainFrame,
+	UDim2.new(0, 10, 0, 40),
+	"Авто-сбор монет: ВЫКЛ"
+)
+
+local toggleGunBtn = createButton(
+	mainFrame,
+	UDim2.new(0, 10, 0, 88),
+	"Авто-подбор оружия: ВЫКЛ"
+)
 
 --==================================================
--- КНОПКИ И ИНФО-ПАНЕЛЬ
+-- STATUS FRAME
 --==================================================
 
-local toggleFarmBtn = Instance.new("TextButton")
-toggleFarmBtn.Size = UDim2.new(1, -20, 0, 40)
-toggleFarmBtn.Position = UDim2.new(0, 10, 0, 40)
-toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-toggleFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleFarmBtn.TextSize = 13
-toggleFarmBtn.Font = Enum.Font.GothamBold
-toggleFarmBtn.Text = "Авто-сбор монет: ВЫКЛ"
-toggleFarmBtn.Parent = mainFrame
-Instance.new("UICorner", toggleFarmBtn).CornerRadius = UDim.new(0, 6)
-
-local toggleGunBtn = Instance.new("TextButton")
-toggleGunBtn.Size = UDim2.new(1, -20, 0, 40)
-toggleGunBtn.Position = UDim2.new(0, 10, 0, 88)
-toggleGunBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-toggleGunBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleGunBtn.TextSize = 13
-toggleGunBtn.Font = Enum.Font.GothamBold
-toggleGunBtn.Text = "Авто-подбор оружия: ВЫКЛ"
-toggleGunBtn.Parent = mainFrame
-Instance.new("UICorner", toggleGunBtn).CornerRadius = UDim.new(0, 6)
-
--- Роли (Индикатор)
 local rolesFrame = Instance.new("Frame")
 rolesFrame.Size = UDim2.new(1, -20, 0, 120)
 rolesFrame.Position = UDim2.new(0, 10, 0, 136)
 rolesFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 rolesFrame.BorderSizePixel = 0
 rolesFrame.Parent = mainFrame
-Instance.new("UICorner", rolesFrame).CornerRadius = UDim.new(0, 6)
+
+local rolesCorner = Instance.new("UICorner")
+rolesCorner.CornerRadius = UDim.new(0, 6)
+rolesCorner.Parent = rolesFrame
 
 local rolesTitle = Instance.new("TextLabel")
 rolesTitle.Size = UDim2.new(1, 0, 0, 25)
@@ -167,64 +232,241 @@ infoLabel.BackgroundTransparency = 1
 infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 10
 infoLabel.Font = Enum.Font.Gotham
-infoLabel.Text = "Нажми K чтобы скрыть / открыть меню."
+infoLabel.Text = "K — скрыть / открыть меню"
 infoLabel.Parent = mainFrame
+
+--==================================================
+-- CLEANUP
+--==================================================
+
+local function cleanup()
+	if not running then
+		return
+	end
+
+	running = false
+
+	isCoinFarmEnabled = false
+	isAutoGunEnabled = false
+
+	for _, connection in ipairs(connections) do
+		if connection and connection.Connected then
+			connection:Disconnect()
+		end
+	end
+
+	table.clear(connections)
+
+	if ENV.MM2UtilityCleanup == cleanup then
+		ENV.MM2UtilityCleanup = nil
+	end
+
+	if screenGui and screenGui.Parent then
+		screenGui:Destroy()
+	end
+end
+
+ENV.MM2UtilityCleanup = cleanup
+
+connect(screenGui.AncestryChanged, function(_, parent)
+	if parent == nil and running then
+		cleanup()
+	end
+end)
 
 --==================================================
 -- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 --==================================================
 
 local function getRootPart(character)
-	if not character then return nil end
+	if not character then
+		return nil
+	end
+
 	local root = character:FindFirstChild("HumanoidRootPart")
-	if root and root:IsA("BasePart") then return root end
+
+	if root and root:IsA("BasePart") then
+		return root
+	end
+
 	return nil
 end
 
--- Проверка ролей в MM2 по инвентарю / инструменту
+local function hasItem(player, itemName)
+	if not player then
+		return false
+	end
+
+	local character = player.Character
+	local backpack = player:FindFirstChildOfClass("Backpack")
+
+	if character and character:FindFirstChild(itemName) then
+		return true
+	end
+
+	if backpack and backpack:FindFirstChild(itemName) then
+		return true
+	end
+
+	return false
+end
+
+local function getObjectPart(object)
+	if not object then
+		return nil
+	end
+
+	if object:IsA("BasePart") then
+		return object
+	end
+
+	return object:FindFirstChildWhichIsA("BasePart", true)
+end
+
+--==================================================
+-- ПОИСК GUN DROP
+--==================================================
+
+local function findGunDrop()
+	for _, object in ipairs(Workspace:GetChildren()) do
+		if object.Name == "GunDrop" then
+			local part = getObjectPart(object)
+
+			if part then
+				return part
+			end
+		end
+	end
+
+	return nil
+end
+
+--==================================================
+-- ПОИСК КОНТЕЙНЕРА МОНЕТ
+--==================================================
+
+local function findCoinContainer()
+	return Workspace:FindFirstChild("CoinContainer")
+		or Workspace:FindFirstChild("Coins")
+end
+
+--==================================================
+-- ПОИСК ЧАСТИ МОНЕТЫ
+--==================================================
+
+local function getCoinPart(coin)
+	if not coin then
+		return nil
+	end
+
+	if coin:IsA("BasePart") then
+		return coin
+	end
+
+	local coinVisual = coin:FindFirstChild("CoinVisual", true)
+
+	if coinVisual and coinVisual:IsA("BasePart") then
+		return coinVisual
+	end
+
+	local part = coin:FindFirstChild("Part", true)
+
+	if part and part:IsA("BasePart") then
+		return part
+	end
+
+	return coin:FindFirstChildWhichIsA("BasePart", true)
+end
+
+--==================================================
+-- ПОИСК БЛИЖАЙШЕЙ МОНЕТЫ
+--==================================================
+
+local coinCooldown = {}
+
+local function findNearestCoin(rootPart)
+	local container = findCoinContainer()
+
+	if not container or not rootPart then
+		return nil
+	end
+
+	local nearestPart = nil
+	local nearestDistance = math.huge
+	local now = os.clock()
+
+	for _, coin in ipairs(container:GetChildren()) do
+		local cooldownUntil = coinCooldown[coin]
+
+		if not cooldownUntil or cooldownUntil <= now then
+			local coinPart = getCoinPart(coin)
+
+			if coinPart and coinPart.Parent then
+				local distance = (rootPart.Position - coinPart.Position).Magnitude
+
+				if distance < nearestDistance then
+					nearestDistance = distance
+					nearestPart = coinPart
+				end
+			end
+		end
+	end
+
+	return nearestPart
+end
+
+--==================================================
+-- СКАНИРОВАНИЕ РОЛЕЙ
+--==================================================
+
+local lastMurderer = nil
+local lastSheriff = nil
+local lastGunDropped = nil
+
 local function scanRoles()
-	local mName = "Неизвестно"
-	local sName = "Неизвестно"
+	local murderer = "Неизвестно"
+	local sheriff = "Неизвестно"
 
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then
-			local char = player.Character
-			if char:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife")) then
-				mName = player.Name
-			end
-			if char:FindFirstChild("Gun") or (player.Backpack and player.Backpack:FindFirstChild("Gun")) then
-				sName = player.Name
-			end
+		if hasItem(player, "Knife") then
+			murderer = player.Name
+		end
+
+		if hasItem(player, "Gun") then
+			sheriff = player.Name
 		end
 	end
 
-	murdererLabel.Text = "Убийца: " .. mName
-	sheriffLabel.Text = "Шериф: " .. sName
-end
+	local gunDropped = findGunDrop() ~= nil
 
-local function updateHeroStatus()
-	local gunDropped = false
-	for _, obj in ipairs(Workspace:GetChildren()) do
-		if obj.Name == "GunDrop" then
-			gunDropped = true
-			break
-		end
+	if murderer ~= lastMurderer then
+		lastMurderer = murderer
+		murdererLabel.Text = "Убийца: " .. murderer
 	end
-	if gunDropped then
-		heroLabel.Text = "Оружие на полу: ДА (Бери!)"
-		heroLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
-	else
-		heroLabel.Text = "Оружие на полу: Нет"
-		heroLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+
+	if sheriff ~= lastSheriff then
+		lastSheriff = sheriff
+		sheriffLabel.Text = "Шериф: " .. sheriff
+	end
+
+	if gunDropped ~= lastGunDropped then
+		lastGunDropped = gunDropped
+
+		if gunDropped then
+			heroLabel.Text = "Оружие на полу: ДА"
+			heroLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
+		else
+			heroLabel.Text = "Оружие на полу: Нет"
+			heroLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+		end
 	end
 end
 
 --==================================================
--- КНОПКИ УПРАВЛЕНИЯ ФУНКЦИЯМИ
+-- ОБНОВЛЕНИЕ КНОПОК
 --==================================================
 
-toggleFarmBtn.MouseButton1Click:Connect(function()
-	isCoinFarmEnabled = not isCoinFarmEnabled
+local function updateFarmButton()
 	if isCoinFarmEnabled then
 		toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
 		toggleFarmBtn.Text = "Авто-сбор монет: ВКЛ"
@@ -232,10 +474,9 @@ toggleFarmBtn.MouseButton1Click:Connect(function()
 		toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 		toggleFarmBtn.Text = "Авто-сбор монет: ВЫКЛ"
 	end
-end)
+end
 
-toggleGunBtn.MouseButton1Click:Connect(function()
-	isAutoGunEnabled = not isAutoGunEnabled
+local function updateGunButton()
 	if isAutoGunEnabled then
 		toggleGunBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
 		toggleGunBtn.Text = "Авто-подбор оружия: ВКЛ"
@@ -243,54 +484,99 @@ toggleGunBtn.MouseButton1Click:Connect(function()
 		toggleGunBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
 		toggleGunBtn.Text = "Авто-подбор оружия: ВЫКЛ"
 	end
+end
+
+--==================================================
+-- КНОПКИ
+--==================================================
+
+connect(toggleFarmBtn.MouseButton1Click, function()
+	isCoinFarmEnabled = not isCoinFarmEnabled
+	updateFarmButton()
+end)
+
+connect(toggleGunBtn.MouseButton1Click, function()
+	isAutoGunEnabled = not isAutoGunEnabled
+	updateGunButton()
 end)
 
 --==================================================
--- ОСНОВНОЙ ЦИКЛ
+-- AUTO GUN
 --==================================================
 
-RunService.Heartbeat:Connect(function()
-	scanRoles()
-	updateHeroStatus()
+task.spawn(function()
+	while running do
+		if isAutoGunEnabled then
+			local character = LocalPlayer.Character
+			local rootPart = getRootPart(character)
 
-	local character = LocalPlayer.Character
-	if not character then return end
-	local rootPart = getRootPart(character)
-	if not rootPart then return end
+			if rootPart then
+				local gunPart = findGunDrop()
 
-	if isAutoGunEnabled then
-		for _, obj in ipairs(Workspace:GetChildren()) do
-			if obj.Name == "GunDrop" and obj:IsA("BasePart") then
-				rootPart.CFrame = obj.CFrame + Vector3.new(0, 2, 0)
-				break
-			end
-		end
-	end
-
-	if isCoinFarmEnabled then
-		local coinContainer = Workspace:FindFirstChild("CoinContainer") or Workspace:FindFirstChild("Coins")
-		if coinContainer then
-			for _, coin in ipairs(coinContainer:GetChildren()) do
-				local coinPart = coin:FindFirstChild("CoinVisual") or coin:FindFirstChild("Part") or (coin:IsA("BasePart") and coin)
-				if coinPart and isCoinFarmEnabled then
-					rootPart.CFrame = coinPart.CFrame
-					task.wait(0.15)
-					break
+				if gunPart then
+					rootPart.CFrame = gunPart.CFrame + Vector3.new(0, 2, 0)
 				end
 			end
 		end
+
+		task.wait(0.20)
 	end
 end)
 
 --==================================================
--- ГОРЯЧИЕ КЛАВИШИ
+-- COIN FARM
 --==================================================
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
+task.spawn(function()
+	while running do
+		if isCoinFarmEnabled and not isAutoGunEnabled then
+			local character = LocalPlayer.Character
+			local rootPart = getRootPart(character)
+
+			if rootPart then
+				local coinPart = findNearestCoin(rootPart)
+
+				if coinPart and coinPart.Parent then
+					rootPart.CFrame = coinPart.CFrame + Vector3.new(0, 1.5, 0)
+
+					local coinObject = coinPart.Parent
+					coinCooldown[coinObject] = os.clock() + 0.35
+				end
+			end
+		end
+
+		task.wait(0.18)
+	end
+end)
+
+--==================================================
+-- ROLE SCANNER
+--==================================================
+
+task.spawn(function()
+	while running do
+		scanRoles()
+		task.wait(0.50)
+	end
+end)
+
+--==================================================
+-- ГОРЯЧАЯ КЛАВИША K
+--==================================================
+
+connect(UserInputService.InputBegan, function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+
 	if input.KeyCode == Enum.KeyCode.K then
 		isMenuVisible = not isMenuVisible
 		mainFrame.Visible = isMenuVisible
 	end
 end)
 
-print("[Xeno] MM2 Utility Hub loaded successfully!")
+--==================================================
+-- ГОТОВО
+--==================================================
+
+print("[MM2 Utility Hub] Loaded successfully.")
