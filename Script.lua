@@ -1,5 +1,5 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (STANDARD GAMEPLAY SYSTEM)
+-- JJS LOCK-ON + BACK DASH (STABLE TWEEN VERSION)
 --==================================================
 
 local Players = game:GetService("Players")
@@ -442,7 +442,8 @@ local function stopDash()
 		end
 
 		if root then
-			root.AssemblyLinearVelocity = Vector3.zero
+			local curVel = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(0, math.min(curVel.Y, 0), 0)
 		end
 	end
 end
@@ -474,7 +475,7 @@ local function startChargeCooldown()
 end
 
 --==================================================
--- BACK DASH
+-- BACK DASH (OPTIMIZED TWEEN)
 --==================================================
 
 local function executeBackDash()
@@ -606,6 +607,14 @@ local function executeBackDash()
 			break
 		end
 
+		-- Аварийное прерывание, если цель исчезла прямо во время рывка
+		if not targetRoot or not targetRoot.Parent then
+			if activeTween then
+				activeTween:Cancel()
+			end
+			break
+		end
+
 		task.wait()
 	end
 
@@ -616,7 +625,8 @@ local function executeBackDash()
 	activeTween = nil
 
 	if rootPart.Parent then
-		rootPart.AssemblyLinearVelocity = Vector3.zero
+		local curVel = rootPart.AssemblyLinearVelocity
+		rootPart.AssemblyLinearVelocity = Vector3.new(0, math.min(curVel.Y, 0), 0)
 	end
 
 	if humanoid.Parent then
