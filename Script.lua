@@ -1,5 +1,5 @@
 --==================================================
--- JJS LOCK-ON + BACK DASH (PRO ARCHITECTURE V2)
+-- JJS LOCK-ON + BACK DASH (PRO ARCHITECTURE V4)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -15,11 +15,21 @@ local LocalPlayer = Players.LocalPlayer
 --==================================================
 
 local LOCK_RANGE = 90
-local BACK_DISTANCE = 4.2      -- Чуть увеличили, чтобы не сливаться вплотную с моделью
+local LOCK_VALID_RANGE = LOCK_RANGE * 1.3
+
+local BACK_DISTANCE = 4.2
+
 local DASH_TIME_MIN = 0.12
 local DASH_TIME_MAX = 0.28
+local DASH_SPEED = 55
+
 local LOCK_SMOOTHNESS = 0.12
+
+local MAX_CHARGES = 4
+local CHARGE_COOLDOWN = 3
+
 local TOGGLE_UI_KEY = Enum.KeyCode.K
+local DASH_KEY = Enum.KeyCode.Three
 
 --==================================================
 -- ОЧИСТКА СТАРОГО GUI
@@ -32,7 +42,27 @@ for _, gui in ipairs(CoreGui:GetChildren()) do
 end
 
 --==================================================
--- GUI МЕНЮ
+-- СОСТОЯНИЯ
+--==================================================
+
+local State = {
+	DashEnabled = false,
+	LockOnEnabled = false,
+	MenuVisible = true,
+
+	Target = nil,
+
+	Charges = MAX_CHARGES,
+	MaxCharges = MAX_CHARGES,
+
+	CoolingDown = false,
+	Dashing = false,
+
+	Destroyed = false,
+}
+
+--==================================================
+-- GUI
 --==================================================
 
 local screenGui = Instance.new("ScreenGui")
@@ -60,21 +90,35 @@ title.TextSize = 13
 title.Font = Enum.Font.GothamBold
 title.Parent = mainFrame
 
--- Перетаскивание меню
-local dragging, dragInput, dragStart, startPos
+--==================================================
+-- DRAG MENU
+--==================================================
+
+local dragging = false
+local dragInput = nil
+local dragStart = nil
+local startPos = nil
+
 title.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+
 		dragging = true
 		dragStart = input.Position
 		startPos = mainFrame.Position
+
 		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
 		end)
 	end
 end)
 
 title.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+
 		dragInput = input
 	end
 end)
@@ -82,29 +126,27 @@ end)
 UserInputService.InputChanged:Connect(function(input)
 	if input == dragInput and dragging then
 		local delta = input.Position - dragStart
-		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+
+		mainFrame.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
 	end
 end)
 
 --==================================================
--- СОСТОЯНИЯ И МЕНЕДЖЕРЫ (ЦЕНТРАЛИЗАЦИЯ)
+-- UI ELEMENTS
 --==================================================
 
-local isDashEnabled = false
-local isLockOnEnabled = false
-local isMenuVisible = true
-local lockedTargetPart = nil
-local currentCharges = 4
-local maxCharges = 4
-local isCoolingDown = false
-local isDashing = false
-
--- Элементы интерфейса
 local toggleDashBtn = Instance.new("TextButton")
 toggleDashBtn.Size = UDim2.new(1, -20, 0, 40)
 toggleDashBtn.Position = UDim2.new(0, 10, 0, 40)
 toggleDashBtn.Parent = mainFrame
+
 Instance.new("UICorner", toggleDashBtn).CornerRadius = UDim.new(0, 6)
+
 toggleDashBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleDashBtn.TextSize = 13
 toggleDashBtn.Font = Enum.Font.GothamBold
@@ -113,7 +155,9 @@ local toggleLockBtn = Instance.new("TextButton")
 toggleLockBtn.Size = UDim2.new(1, -20, 0, 40)
 toggleLockBtn.Position = UDim2.new(0, 10, 0, 88)
 toggleLockBtn.Parent = mainFrame
+
 Instance.new("UICorner", toggleLockBtn).CornerRadius = UDim.new(0, 6)
+
 toggleLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleLockBtn.TextSize = 13
 toggleLockBtn.Font = Enum.Font.GothamBold
@@ -144,74 +188,125 @@ infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 11
 infoLabel.Font = Enum.Font.Gotham
 infoLabel.TextWrapped = true
-infoLabel.Text = "Архитектурно чистый JJS скрипт. Нажми K для скрытия меню."
+infoLabel.Text = "JJS Lock-On + Back Dash V4."
 infoLabel.Parent = mainFrame
 
--- Единые функции управления состоянием (исключают рассинхрон GUI)
-local function setLockState(state, target, targetName)
-	isLockOnEnabled = state
-	lockedTargetPart = target
-	if state and target then
-		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-		toggleLockBtn.Text = "Лок-он: ВКЛ"
-		statusLabel.Text = "Цель: " .. (targetName or "Неизвестно")
+--==================================================
+-- UI STATE
+--==================================================
+
+local function updateChargesDisplay()
+	chargesLabel.Text =
+		"Заряды: "
+		.. tostring(State.Charges)
+		.. " / "
+		.. tostring(State.MaxCharges)
+end
+
+local function updateDashButtonVisual()
+	if State.CoolingDown then
+		toggleDashBtn.Text = "Заряды восстанавливаются..."
+		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(200, 140, 0)
+
+	elseif State.DashEnabled then
+		toggleDashBtn.Text = "Back Dash [3]: ВКЛ"
+		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+
 	else
-		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+		toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
+		toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+	end
+end
+
+local function setLockState(enabled, target)
+	State.LockOnEnabled = enabled
+	State.Target = target
+
+	if enabled and target then
+		toggleLockBtn.Text = "Лок-он: ВКЛ"
+		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+
+		statusLabel.Text = "Цель: " .. target.Parent.Name
+	else
 		toggleLockBtn.Text = "Лок-он: ВЫКЛ"
+		toggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+
 		statusLabel.Text = "Цель: нет"
 	end
 end
 
-local function setDashState(state, customText, customColor)
-	isDashEnabled = state
-	if customText then
-		toggleDashBtn.Text = customText
-		toggleDashBtn.BackgroundColor3 = customColor or Color3.fromRGB(150, 40, 40)
-	else
-		if state then
-			toggleDashBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-			toggleDashBtn.Text = "Back Dash [3]: ВКЛ"
-		else
-			toggleDashBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-			toggleDashBtn.Text = "Back Dash [3]: ВЫКЛ"
-		end
-	end
-end
-
-local function updateChargesDisplay()
-	chargesLabel.Text = "Заряды: " .. tostring(currentCharges) .. " / " .. tostring(maxCharges)
-end
-
 --==================================================
--- ОПТИМИЗИРОВАННЫЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+-- CHARACTER HELPERS
 --==================================================
 
 local function getRootPart(model)
-	if not model or not model:IsA("Model") then return nil end
+	if not model or not model:IsA("Model") then
+		return nil
+	end
+
 	local root = model:FindFirstChild("HumanoidRootPart")
-	if root and root:IsA("BasePart") then return root end
+
+	if root and root:IsA("BasePart") then
+		return root
+	end
+
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
-	if humanoid and humanoid.RootPart then return humanoid.RootPart end
-	return model.PrimaryPart
+
+	if humanoid and humanoid.RootPart then
+		return humanoid.RootPart
+	end
+
+	local primary = model.PrimaryPart
+
+	if primary and primary:IsA("BasePart") then
+		return primary
+	end
+
+	return nil
 end
 
--- Оптимизированный поиск цели (без мусорного перебора всего workspace)
+local function getHumanoid(model)
+	if not model or not model:IsA("Model") then
+		return nil
+	end
+
+	return model:FindFirstChildOfClass("Humanoid")
+end
+
+--==================================================
+-- TARGET SEARCH
+--==================================================
+
 local function getBestTarget()
 	local character = LocalPlayer.Character
-	if not character then return nil end
+
+	if not character then
+		return nil
+	end
+
 	local myRoot = getRootPart(character)
-	if not myRoot then return nil end
+
+	if not myRoot then
+		return nil
+	end
 
 	local bestTarget = nil
 	local shortestDistance = LOCK_RANGE
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character then
+
 			local model = player.Character
-			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			local humanoid = getHumanoid(model)
 			local root = getRootPart(model)
-			if humanoid and humanoid.Health > 0 and root then
-				local distance = (myRoot.Position - root.Position).Magnitude
+
+			if humanoid
+				and humanoid.Health > 0
+				and root then
+
+				local distance =
+					(myRoot.Position - root.Position).Magnitude
+
 				if distance < shortestDistance then
 					shortestDistance = distance
 					bestTarget = root
@@ -223,69 +318,252 @@ local function getBestTarget()
 	return bestTarget
 end
 
+--==================================================
+-- TARGET VALIDATION
+--==================================================
+
 local function isTargetValid()
-	if not lockedTargetPart or not lockedTargetPart.Parent then return false end
-	local model = lockedTargetPart.Parent
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then return false end
-	
-	local character = LocalPlayer.Character
-	if character then
-		local myRoot = getRootPart(character)
-		if myRoot and (myRoot.Position - lockedTargetPart.Position).Magnitude > LOCK_RANGE * 1.3 then
-			return false
-		end
+	local target = State.Target
+
+	if not target then
+		return false
 	end
+
+	if not target.Parent then
+		return false
+	end
+
+	if not target:IsA("BasePart") then
+		return false
+	end
+
+	local model = target.Parent
+	local humanoid = getHumanoid(model)
+
+	if not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+
+	local character = LocalPlayer.Character
+
+	if not character then
+		return false
+	end
+
+	local myRoot = getRootPart(character)
+
+	if not myRoot then
+		return false
+	end
+
+	local distance =
+		(myRoot.Position - target.Position).Magnitude
+
+	if distance > LOCK_VALID_RANGE then
+		return false
+	end
+
 	return true
 end
 
 --==================================================
--- БЕЗОПАСНЫЙ БЭК-ДЭШ (С RAYCAST ПРОВЕРКОЙ СТЕН)
+-- RAYCAST
 --==================================================
 
 local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
+local function calculateSafeDestination(rootPart, targetRoot)
+	local targetCFrame = targetRoot.CFrame
+
+	local desiredCFrame =
+		targetCFrame * CFrame.new(0, 0, BACK_DISTANCE)
+
+	local desiredPosition = Vector3.new(
+		desiredCFrame.Position.X,
+		rootPart.Position.Y,
+		desiredCFrame.Position.Z
+	)
+
+	local dashVector = desiredPosition - rootPart.Position
+	local distance = dashVector.Magnitude
+
+	if distance <= 0.05 then
+		return desiredPosition
+	end
+
+	raycastParams.FilterDescendantsInstances = {
+		LocalPlayer.Character,
+		targetRoot.Parent
+	}
+
+	local result = workspace:Raycast(
+		rootPart.Position,
+		dashVector,
+		raycastParams
+	)
+
+	if not result then
+		return desiredPosition
+	end
+
+	-- Останавливаемся перед препятствием.
+	local safeDistance = math.max(
+		result.Distance - 1.5,
+		0
+	)
+
+	local direction = dashVector.Unit
+
+	return rootPart.Position + direction * safeDistance
+end
+
+--==================================================
+-- DASH CLEANUP
+--==================================================
+
+local activeTween = nil
+
+local function stopDash()
+	if activeTween then
+		activeTween:Cancel()
+		activeTween = nil
+	end
+
+	State.Dashing = false
+
+	local character = LocalPlayer.Character
+
+	if character then
+		local humanoid = getHumanoid(character)
+		local root = getRootPart(character)
+
+		if humanoid then
+			humanoid.AutoRotate = true
+		end
+
+		if root then
+			root.AssemblyLinearVelocity = Vector3.zero
+		end
+	end
+end
+
+--==================================================
+-- CHARGE REGEN
+--==================================================
+
+local function startChargeCooldown()
+	if State.CoolingDown then
+		return
+	end
+
+	State.CoolingDown = true
+	updateDashButtonVisual()
+
+	task.delay(CHARGE_COOLDOWN, function()
+
+		if State.Destroyed then
+			return
+		end
+
+		State.Charges = State.MaxCharges
+		State.CoolingDown = false
+
+		updateChargesDisplay()
+		updateDashButtonVisual()
+	end)
+end
+
+--==================================================
+-- BACK DASH
+--==================================================
+
 local function executeBackDash()
-	if not isDashEnabled or not isLockOnEnabled or isCoolingDown or isDashing or currentCharges <= 0 then return end
+	if State.Destroyed then
+		return
+	end
+
+	if not State.DashEnabled then
+		return
+	end
+
+	if not State.LockOnEnabled then
+		return
+	end
+
+	if State.CoolingDown then
+		return
+	end
+
+	if State.Dashing then
+		return
+	end
+
+	if State.Charges <= 0 then
+		return
+	end
+
 	if not isTargetValid() then
 		setLockState(false, nil)
 		return
 	end
 
 	local character = LocalPlayer.Character
-	if not character then return end
-	local rootPart = getRootPart(character)
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if not rootPart or not humanoid then return end
 
-	currentCharges -= 1
-	updateChargesDisplay()
-
-	isDashing = true
-	local oldAutoRotate = humanoid.AutoRotate
-	humanoid.AutoRotate = false
-
-	local targetRoot = lockedTargetPart
-	local targetCFrame = targetRoot.CFrame
-	
-	-- Желаемая точка за спиной
-	local destinationCFrame = targetCFrame * CFrame.new(0, 0, BACK_DISTANCE)
-	local targetPos = Vector3.new(destinationCFrame.Position.X, rootPart.Position.Y, destinationCFrame.Position.Z)
-
-	-- РЕЙКАСТ: проверяем, нет ли стены между текущей позицией игрока и точкой позади врага
-	raycastParams.FilterDescendantsInstances = {character, targetRoot.Parent}
-	local rayResult = workspace:Raycast(rootPart.Position, targetPos - rootPart.Position, raycastParams)
-	
-|-- Если на пути стена, корректируем конечную точку перед ней, чтобы не застрять
-	if rayResult then
-		targetPos = rayResult.Position + (rootPart.Position - targetPos).Unit * 1.5
+	if not character then
+		return
 	end
 
-	local finalCFrame = CFrame.lookAt(targetPos, Vector3.new(targetRoot.Position.X, targetPos.Y, targetRoot.Position.Z))
+	local rootPart = getRootPart(character)
+	local humanoid = getHumanoid(character)
+	local targetRoot = State.Target
 
-	local distance = (rootPart.Position - targetPos).Magnitude
-	local dashTime = math.clamp(distance / 55, DASH_TIME_MIN, DASH_TIME_MAX)
+	if not rootPart or not humanoid or not targetRoot then
+		return
+	end
+
+	-- Сохраняем состояние AutoRotate.
+	local oldAutoRotate = humanoid.AutoRotate
+
+	State.Charges -= 1
+	updateChargesDisplay()
+
+	State.Dashing = true
+	humanoid.AutoRotate = false
+
+	local targetPosition = calculateSafeDestination(
+		rootPart,
+		targetRoot
+	)
+
+	local lookPosition = Vector3.new(
+		targetRoot.Position.X,
+		targetPosition.Y,
+		targetRoot.Position.Z
+	)
+
+	local finalCFrame =
+		CFrame.lookAt(targetPosition, lookPosition)
+
+	local distance =
+		(rootPart.Position - targetPosition).Magnitude
+
+	if distance <= 0.05 then
+		humanoid.AutoRotate = oldAutoRotate
+		State.Dashing = false
+
+		if State.Charges <= 0 then
+			startChargeCooldown()
+		end
+
+		return
+	end
+
+	local dashTime = math.clamp(
+		distance / DASH_SPEED,
+		DASH_TIME_MIN,
+		DASH_TIME_MAX
+	)
 
 	local tweenInfo = TweenInfo.new(
 		dashTime,
@@ -293,37 +571,82 @@ local function executeBackDash()
 		Enum.EasingDirection.Out
 	)
 
-	local dashTween = TweenService:Create(rootPart, tweenInfo, {CFrame = finalCFrame})
-	
 	rootPart.AssemblyLinearVelocity = Vector3.zero
-	dashTween:Play()
-	dashTween.Completed:Wait()
 
-	rootPart.AssemblyLinearVelocity = Vector3.zero
-	humanoid.AutoRotate = oldAutoRotate
-	isDashing = false
+	activeTween = TweenService:Create(
+		rootPart,
+		tweenInfo,
+		{
+			CFrame = finalCFrame
+		}
+	)
 
-	if currentCharges <= 0 then
-		isCoolingDown = true
-		setDashState(false, "Заряды восстанавливаются...", Color3.fromRGB(200, 140, 0))
-		task.delay(3, function()
-			currentCharges = maxCharges
-			isCoolingDown = false
-			updateChargesDisplay()
-			setDashState(isDashEnabled)
-		end)
+	activeTween:Play()
+
+	local completed = false
+
+	local connection
+	connection = activeTween.Completed:Connect(function()
+		completed = true
+
+		if connection then
+			connection:Disconnect()
+			connection = nil
+		end
+	end)
+
+	-- Ждём завершения tween, но не блокируем бесконечно.
+	while not completed do
+		if State.Destroyed then
+			break
+		end
+
+		if not character.Parent then
+			break
+		end
+
+		if not rootPart.Parent then
+			break
+		end
+
+		task.wait()
+	end
+
+	if connection then
+		connection:Disconnect()
+	end
+
+	activeTween = nil
+
+	if rootPart.Parent then
+		rootPart.AssemblyLinearVelocity = Vector3.zero
+	end
+
+	if humanoid.Parent then
+		humanoid.AutoRotate = oldAutoRotate
+	end
+
+	State.Dashing = false
+
+	if State.Charges <= 0 and not State.CoolingDown then
+		startChargeCooldown()
 	end
 end
 
 --==================================================
--- ОБРАБОТЧИКИ КНОПОК
+-- BUTTONS
 --==================================================
 
 toggleLockBtn.MouseButton1Click:Connect(function()
-	if not isLockOnEnabled then
+	if State.Dashing then
+		return
+	end
+
+	if not State.LockOnEnabled then
 		local target = getBestTarget()
+
 		if target then
-			setLockState(true, target, target.Parent.Name)
+			setLockState(true, target)
 		else
 			setLockState(false, nil)
 		end
@@ -333,59 +656,126 @@ toggleLockBtn.MouseButton1Click:Connect(function()
 end)
 
 toggleDashBtn.MouseButton1Click:Connect(function()
-	if isCoolingDown then return end
-	setDashState(not isDashEnabled)
+	if State.CoolingDown then
+		return
+	end
+
+	State.DashEnabled = not State.DashEnabled
+
+	updateDashButtonVisual()
 end)
 
 --==================================================
--- РЕНДЕР (ЛОК-ОН СТАБИЛЬНЫЙ)
+-- LOCK-ON RENDER
 --==================================================
 
 RunService.RenderStepped:Connect(function()
-	if not isLockOnEnabled then return end
+	if State.Destroyed then
+		return
+	end
+
+	if not State.LockOnEnabled then
+		return
+	end
 
 	if not isTargetValid() then
 		local newTarget = getBestTarget()
+
 		if newTarget then
-			setLockState(true, newTarget, newTarget.Parent.Name)
+			setLockState(true, newTarget)
 		else
 			setLockState(false, nil)
 			return
 		end
 	end
 
-	if isDashing then return end
+	if State.Dashing then
+		return
+	end
 
 	local character = LocalPlayer.Character
-	if not character then return end
-	local myRoot = getRootPart(character)
-	if not myRoot then return end
 
-	local targetPosition = lockedTargetPart.Position
-	local flatTarget = Vector3.new(targetPosition.X, myRoot.Position.Y, targetPosition.Z)
+	if not character then
+		setLockState(false, nil)
+		return
+	end
+
+	local myRoot = getRootPart(character)
+
+	if not myRoot then
+		setLockState(false, nil)
+		return
+	end
+
+	local target = State.Target
+
+	if not target or not target.Parent then
+		setLockState(false, nil)
+		return
+	end
+
+	local targetPosition = target.Position
+
+	local flatTarget = Vector3.new(
+		targetPosition.X,
+		myRoot.Position.Y,
+		targetPosition.Z
+	)
+
 	local direction = flatTarget - myRoot.Position
 
 	if direction.Magnitude > 0.1 then
-		local goalCFrame = CFrame.lookAt(myRoot.Position, flatTarget)
-		myRoot.CFrame = myRoot.CFrame:Lerp(goalCFrame, LOCK_SMOOTHNESS)
+		local goalCFrame =
+			CFrame.lookAt(myRoot.Position, flatTarget)
+
+		myRoot.CFrame =
+			myRoot.CFrame:Lerp(
+				goalCFrame,
+				LOCK_SMOOTHNESS
+			)
 	end
 
-	statusLabel.Text = "Цель: " .. lockedTargetPart.Parent.Name
+	statusLabel.Text =
+		"Цель: " .. target.Parent.Name
 end)
 
 --==================================================
--- ГОРЯЧИЕ КЛАВИШИ
+-- CHARACTER RESPAWN
+--==================================================
+
+LocalPlayer.CharacterAdded:Connect(function()
+	-- После респавна старая цель больше не считается надёжной.
+	stopDash()
+	setLockState(false, nil)
+end)
+
+--==================================================
+-- INPUT
 --==================================================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if input.KeyCode == Enum.KeyCode.Three or input.KeyCode == Enum.KeyCode.KeypadThree then
-		if not gameProcessed then executeBackDash() end
+	if gameProcessed then
+		return
 	end
+
+	if input.KeyCode == DASH_KEY
+		or input.KeyCode == Enum.KeyCode.KeypadThree then
+
+		executeBackDash()
+	end
+
 	if input.KeyCode == TOGGLE_UI_KEY then
-		isMenuVisible = not isMenuVisible
-		mainFrame.Visible = isMenuVisible
+		State.MenuVisible = not State.MenuVisible
+		mainFrame.Visible = State.MenuVisible
 	end
 end)
 
+--==================================================
+-- INITIAL UI
+--==================================================
+
 updateChargesDisplay()
-print("[Xeno] Pro Architecture JJS Script Loaded Safely!")
+updateDashButtonVisual()
+setLockState(false, nil)
+
+print("[Xeno] JJS Script V4 Successfully Loaded!")
