@@ -1,3 +1,5 @@
+print("XENO РАБОТАЕТ, СКРИПТ ЗАПУЩЕН!")
+
 local function executeBackDash()
 	print("1. Нажата клавиша дэша")
 
