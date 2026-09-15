@@ -1,5 +1,5 @@
 --==================================================
--- MM2 UTILITY GUI (ROLES, COIN FARM, AUTO GUN)
+-- MM2 UTILITY HUB (CLEAN & OPTIMIZED)
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -157,7 +157,7 @@ heroLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
 heroLabel.TextSize = 12
 heroLabel.Font = Enum.Font.Gotham
 heroLabel.TextXAlignment = Enum.TextXAlignment.Left
-heroLabel.Text = "Герой (Оружие на полу): Нет"
+heroLabel.Text = "Оружие на полу: Нет"
 heroLabel.Parent = rolesFrame
 
 local infoLabel = Instance.new("TextLabel")
@@ -185,37 +185,23 @@ end
 local function scanRoles()
 	local mName = "Неизвестно"
 	local sName = "Неизвестно"
-	local gunDropped = false
 
-	-- Проверяем игроков
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Character then
 			local char = player.Character
-			-- Ищем нож у убийцы
 			if char:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife")) then
 				mName = player.Name
 			end
-			-- Ищем пистолет у шерифа
 			if char:FindFirstChild("Gun") or (player.Backpack and player.Backpack:FindFirstChild("Gun")) then
 				sName = player.Name
 			end
 		end
 	end
 
-	-- Проверяем, не валяется ли пистолет на карте (если шериф умер)
-	for _, obj in ipairs(Workspace:GetChildren()) do
-		if obj.Name == "GunDrop" then
-			gunDropped = true
-			break
-		end
-	end
-
 	murdererLabel.Text = "Убийца: " .. mName
 	sheriffLabel.Text = "Шериф: " .. sName
-	heroLabel.Text = "Оружие на полу: " .. (gunDropped / "Да" or "Нет") -- синтаксический фикс ниже
 end
 
--- Безопасный апдейт текста оружия на полу
 local function updateHeroStatus()
 	local gunDropped = false
 	for _, obj in ipairs(Workspace:GetChildren()) do
@@ -260,7 +246,7 @@ toggleGunBtn.MouseButton1Click:Connect(function()
 end)
 
 --==================================================
--- ОСНОВНОЙ ЦИКЛ (ФАРМ И ПОДБОР)
+-- ОСНОВНОЙ ЦИКЛ
 --==================================================
 
 RunService.Heartbeat:Connect(function()
@@ -272,7 +258,6 @@ RunService.Heartbeat:Connect(function()
 	local rootPart = getRootPart(character)
 	if not rootPart then return end
 
-	-- Авто-подбор упавшего пистолета
 	if isAutoGunEnabled then
 		for _, obj in ipairs(Workspace:GetChildren()) do
 			if obj.Name == "GunDrop" and obj:IsA("BasePart") then
@@ -282,16 +267,14 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 
-	-- Авто-сбор монет (ищет папки с монетками на карте)
 	if isCoinFarmEnabled then
 		local coinContainer = Workspace:FindFirstChild("CoinContainer") or Workspace:FindFirstChild("Coins")
 		if coinContainer then
 			for _, coin in ipairs(coinContainer:GetChildren()) do
 				local coinPart = coin:FindFirstChild("CoinVisual") or coin:FindFirstChild("Part") or (coin:IsA("BasePart") and coin)
 				if coinPart and isCoinFarmEnabled then
-					-- Плавное или быстрое перемещение к монетам
 					rootPart.CFrame = coinPart.CFrame
-					task.wait(0.15) -- Задержка, чтобы античит не кикал за моментальный телепорт
+					task.wait(0.15)
 					break
 				end
 			end
