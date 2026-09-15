@@ -1,6 +1,10 @@
 --==================================================
 -- MM2 UTILITY HUB
--- CLEAN / OPTIMIZED VERSION
+-- CLEAN / OPTIMIZED / FIXED
+--==================================================
+
+--==================================================
+-- SERVICES
 --==================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -11,7 +15,7 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 --==================================================
--- ENV / ОЧИСТКА ПРЕДЫДУЩЕГО ЗАПУСКА
+-- GLOBAL CLEANUP
 --==================================================
 
 local ENV
@@ -33,15 +37,20 @@ for _, gui in ipairs(CoreGui:GetChildren()) do
 end
 
 --==================================================
--- СОСТОЯНИЯ
+-- STATE
 --==================================================
 
 local running = true
+
 local isCoinFarmEnabled = false
 local isAutoGunEnabled = false
 local isMenuVisible = true
 
 local connections = {}
+
+--==================================================
+-- CONNECTION MANAGER
+--==================================================
 
 local function connect(signal, callback)
 	local connection = signal:Connect(callback)
@@ -60,6 +69,7 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = CoreGui
 
 local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 300, 0, 330)
 mainFrame.Position = UDim2.new(0, 50, 0, 150)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
@@ -71,7 +81,7 @@ mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
 --==================================================
--- ЗАГОЛОВОК
+-- TITLE
 --==================================================
 
 local title = Instance.new("TextLabel")
@@ -84,7 +94,7 @@ title.Font = Enum.Font.GothamBold
 title.Parent = mainFrame
 
 --==================================================
--- DRAG GUI
+-- DRAGGING
 --==================================================
 
 local dragging = false
@@ -123,6 +133,7 @@ connect(UserInputService.InputChanged, function(input)
 		mainFrame.Position = UDim2.new(
 			startPos.X.Scale,
 			startPos.X.Offset + delta.X,
+
 			startPos.Y.Scale,
 			startPos.Y.Offset + delta.Y
 		)
@@ -130,10 +141,10 @@ connect(UserInputService.InputChanged, function(input)
 end)
 
 --==================================================
--- КНОПКА СОЗДАНИЯ
+-- BUTTON FACTORY
 --==================================================
 
-local function createButton(parent, position, text)
+local function createButton(position, text)
 	local button = Instance.new("TextButton")
 
 	button.Size = UDim2.new(1, -20, 0, 40)
@@ -147,7 +158,7 @@ local function createButton(parent, position, text)
 	button.Font = Enum.Font.GothamBold
 
 	button.AutoButtonColor = true
-	button.Parent = parent
+	button.Parent = mainFrame
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 6)
@@ -156,14 +167,16 @@ local function createButton(parent, position, text)
 	return button
 end
 
+--==================================================
+-- BUTTONS
+--==================================================
+
 local toggleFarmBtn = createButton(
-	mainFrame,
 	UDim2.new(0, 10, 0, 40),
 	"Авто-сбор монет: ВЫКЛ"
 )
 
 local toggleGunBtn = createButton(
-	mainFrame,
 	UDim2.new(0, 10, 0, 88),
 	"Авто-подбор оружия: ВЫКЛ"
 )
@@ -214,16 +227,20 @@ sheriffLabel.TextXAlignment = Enum.TextXAlignment.Left
 sheriffLabel.Text = "Шериф: Поиск..."
 sheriffLabel.Parent = rolesFrame
 
-local heroLabel = Instance.new("TextLabel")
-heroLabel.Size = UDim2.new(1, -10, 0, 25)
-heroLabel.Position = UDim2.new(0, 5, 0, 80)
-heroLabel.BackgroundTransparency = 1
-heroLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
-heroLabel.TextSize = 12
-heroLabel.Font = Enum.Font.Gotham
-heroLabel.TextXAlignment = Enum.TextXAlignment.Left
-heroLabel.Text = "Оружие на полу: Нет"
-heroLabel.Parent = rolesFrame
+local gunLabel = Instance.new("TextLabel")
+gunLabel.Size = UDim2.new(1, -10, 0, 25)
+gunLabel.Position = UDim2.new(0, 5, 0, 80)
+gunLabel.BackgroundTransparency = 1
+gunLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+gunLabel.TextSize = 12
+gunLabel.Font = Enum.Font.Gotham
+gunLabel.TextXAlignment = Enum.TextXAlignment.Left
+gunLabel.Text = "Оружие на полу: Нет"
+gunLabel.Parent = rolesFrame
+
+--==================================================
+-- INFO LABEL
+--==================================================
 
 local infoLabel = Instance.new("TextLabel")
 infoLabel.Size = UDim2.new(1, -20, 0, 20)
@@ -232,8 +249,550 @@ infoLabel.BackgroundTransparency = 1
 infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
 infoLabel.TextSize = 10
 infoLabel.Font = Enum.Font.Gotham
-infoLabel.Text = "K — скрыть / открыть меню"
+infoLabel.Text = "Статус: ожидание карты..."
 infoLabel.Parent = mainFrame
+
+local hintLabel = Instance.new("TextLabel")
+hintLabel.Size = UDim2.new(1, -20, 0, 20)
+hintLabel.Position = UDim2.new(0, 10, 0, 290)
+hintLabel.BackgroundTransparency = 1
+hintLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
+hintLabel.TextSize = 10
+hintLabel.Font = Enum.Font.Gotham
+hintLabel.Text = "K — скрыть / открыть меню"
+hintLabel.Parent = mainFrame
+
+--==================================================
+-- BASIC HELPERS
+--==================================================
+
+local function getCharacter()
+	return LocalPlayer.Character
+end
+
+local function getRootPart(character)
+	if not character then
+		return nil
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+
+	if root and root:IsA("BasePart") then
+		return root
+	end
+
+	return nil
+end
+
+local function isValid(instance)
+	return instance ~= nil
+		and instance.Parent ~= nil
+end
+
+--==================================================
+-- TOUCH SUPPORT
+--==================================================
+
+local function hasTouchSupport()
+	return type(firetouchinterest) == "function"
+end
+
+local function fireTouch(rootPart, targetPart)
+	if not rootPart or not targetPart then
+		return false
+	end
+
+	if not hasTouchSupport() then
+		return false
+	end
+
+	local success = pcall(function()
+		firetouchinterest(rootPart, targetPart, 0)
+		task.wait(0.03)
+		firetouchinterest(rootPart, targetPart, 1)
+	end)
+
+	return success
+end
+
+--==================================================
+-- MAP / COIN CONTAINER
+--==================================================
+
+local function findCoinContainer()
+	-- Основной вариант:
+	-- CoinContainer находится внутри текущей карты.
+	local container = Workspace:FindFirstChild("CoinContainer", true)
+
+	if container then
+		return container
+	end
+
+	-- Запасной вариант для другой структуры.
+	container = Workspace:FindFirstChild("Coins", true)
+
+	if container then
+		return container
+	end
+
+	return nil
+end
+
+--==================================================
+-- COIN PICKUP PART
+--==================================================
+
+local function getCoinPickupPart(coin)
+	if not coin then
+		return nil
+	end
+
+	-- Стандартная структура MM2:
+	-- Coin = BasePart
+	-- TouchInterest + CoinVisual
+	if coin:IsA("BasePart") then
+		local touch = coin:FindFirstChild("TouchInterest")
+		local visual = coin:FindFirstChild("CoinVisual")
+
+		if touch and visual then
+			return coin
+		end
+
+		-- Иногда достаточно одного TouchInterest.
+		if touch then
+			return coin
+		end
+	end
+
+	-- Запасной поиск внутри модели.
+	for _, obj in ipairs(coin:GetDescendants()) do
+		if obj:IsA("BasePart") then
+			if obj:FindFirstChild("TouchInterest") then
+				return obj
+			end
+		end
+	end
+
+	return nil
+end
+
+--==================================================
+-- CHECK ACTIVE COIN
+--==================================================
+
+local function isCoinActive(coin)
+	if not coin or not coin.Parent then
+		return false
+	end
+
+	local visual = coin:FindFirstChild("CoinVisual", true)
+
+	if visual and visual:IsA("BasePart") then
+		if visual.Transparency >= 0.99 then
+			return false
+		end
+	end
+
+	return true
+end
+
+--==================================================
+-- FIND NEAREST COIN
+--==================================================
+
+local function findNearestCoin(rootPart)
+	local container = findCoinContainer()
+
+	if not container or not rootPart then
+		return nil, nil
+	end
+
+	local nearestCoin = nil
+	local nearestDistance = math.huge
+
+	for _, coin in ipairs(container:GetChildren()) do
+		if isCoinActive(coin) then
+
+			local pickupPart = getCoinPickupPart(coin)
+
+			if pickupPart and pickupPart.Parent then
+				local distance =
+					(rootPart.Position - pickupPart.Position).Magnitude
+
+				if distance < nearestDistance then
+					nearestDistance = distance
+					nearestCoin = pickupPart
+				end
+			end
+		end
+	end
+
+	return nearestCoin, nearestDistance
+end
+
+--==================================================
+-- GUN DROP
+--==================================================
+
+local function findGunDrop()
+	-- Основной MM2 объект.
+	local gun = Workspace:FindFirstChild("GunDrop", true)
+
+	if gun then
+		if gun:IsA("BasePart") then
+			return gun
+		end
+
+		local part = gun:FindFirstChildWhichIsA("BasePart", true)
+
+		if part then
+			return part
+		end
+	end
+
+	-- Запасной вариант.
+	local droppedGun = Workspace:FindFirstChild("DroppedGun", true)
+
+	if droppedGun then
+		if droppedGun:IsA("BasePart") then
+			return droppedGun
+		end
+
+		local part = droppedGun:FindFirstChildWhichIsA(
+			"BasePart",
+			true
+		)
+
+		if part then
+			return part
+		end
+	end
+
+	return nil
+end
+
+--==================================================
+-- MOVE TO PICKUP
+--==================================================
+
+local function moveToPickup(rootPart, targetPart)
+	if not rootPart or not targetPart then
+		return false
+	end
+
+	if not targetPart.Parent then
+		return false
+	end
+
+	pcall(function()
+		rootPart.AssemblyLinearVelocity = Vector3.zero
+		rootPart.AssemblyAngularVelocity = Vector3.zero
+	end)
+
+	-- Сначала перемещаем персонажа к объекту.
+	rootPart.CFrame = targetPart.CFrame
+
+	-- Небольшая пауза для обновления состояния.
+	task.wait(0.03)
+
+	-- Затем явно вызываем touch, если executor это поддерживает.
+	fireTouch(rootPart, targetPart)
+
+	return true
+end
+
+--==================================================
+-- ROLE DETECTION
+--==================================================
+
+local function hasItem(player, itemName)
+	if not player then
+		return false
+	end
+
+	local character = player.Character
+	local backpack = player:FindFirstChildOfClass("Backpack")
+
+	if character and character:FindFirstChild(itemName) then
+		return true
+	end
+
+	if backpack and backpack:FindFirstChild(itemName) then
+		return true
+	end
+
+	return false
+end
+
+local lastMurderer = ""
+local lastSheriff = ""
+local lastGunState = false
+
+local function scanRoles()
+	local murderer = "Неизвестно"
+	local sheriff = "Неизвестно"
+
+	for _, player in ipairs(Players:GetPlayers()) do
+
+		if hasItem(player, "Knife") then
+			murderer = player.Name
+		end
+
+		if hasItem(player, "Gun") then
+			sheriff = player.Name
+		end
+	end
+
+	local gunDrop = findGunDrop()
+	local gunDropped = gunDrop ~= nil
+
+	if murderer ~= lastMurderer then
+		lastMurderer = murderer
+		murdererLabel.Text = "Убийца: " .. murderer
+	end
+
+	if sheriff ~= lastSheriff then
+		lastSheriff = sheriff
+		sheriffLabel.Text = "Шериф: " .. sheriff
+	end
+
+	if gunDropped ~= lastGunState then
+		lastGunState = gunDropped
+
+		if gunDropped then
+			gunLabel.Text = "Оружие на полу: ДА"
+			gunLabel.TextColor3 =
+				Color3.fromRGB(80, 255, 80)
+		else
+			gunLabel.Text = "Оружие на полу: Нет"
+			gunLabel.TextColor3 =
+				Color3.fromRGB(255, 200, 50)
+		end
+	end
+end
+
+--==================================================
+-- BUTTON UPDATE
+--==================================================
+
+local function updateFarmButton()
+	if isCoinFarmEnabled then
+		toggleFarmBtn.BackgroundColor3 =
+			Color3.fromRGB(40, 160, 60)
+
+		toggleFarmBtn.Text =
+			"Авто-сбор монет: ВКЛ"
+	else
+		toggleFarmBtn.BackgroundColor3 =
+			Color3.fromRGB(150, 40, 40)
+
+		toggleFarmBtn.Text =
+			"Авто-сбор монет: ВЫКЛ"
+	end
+end
+
+local function updateGunButton()
+	if isAutoGunEnabled then
+		toggleGunBtn.BackgroundColor3 =
+			Color3.fromRGB(40, 160, 60)
+
+		toggleGunBtn.Text =
+			"Авто-подбор оружия: ВКЛ"
+	else
+		toggleGunBtn.BackgroundColor3 =
+			Color3.fromRGB(150, 40, 40)
+
+		toggleGunBtn.Text =
+			"Авто-подбор оружия: ВЫКЛ"
+	end
+end
+
+--==================================================
+-- FARM BUTTON
+--==================================================
+
+connect(toggleFarmBtn.MouseButton1Click, function()
+	isCoinFarmEnabled = not isCoinFarmEnabled
+
+	updateFarmButton()
+
+	if isCoinFarmEnabled then
+		if hasTouchSupport() then
+			infoLabel.Text =
+				"Монеты: поиск..."
+		else
+			infoLabel.Text =
+				"Монеты: firetouchinterest не найден"
+		end
+	else
+		infoLabel.Text = "Статус: фарм выключен"
+	end
+end)
+
+--==================================================
+-- GUN BUTTON
+--==================================================
+
+connect(toggleGunBtn.MouseButton1Click, function()
+	isAutoGunEnabled = not isAutoGunEnabled
+
+	updateGunButton()
+
+	if isAutoGunEnabled then
+		if hasTouchSupport() then
+			infoLabel.Text =
+				"Оружие: поиск GunDrop..."
+		else
+			infoLabel.Text =
+				"Оружие: firetouchinterest не найден"
+		end
+	else
+		infoLabel.Text =
+			"Статус: подбор оружия выключен"
+	end
+end)
+
+--==================================================
+-- AUTO GUN LOOP
+--==================================================
+
+task.spawn(function()
+	while running do
+
+		if isAutoGunEnabled then
+
+			local character = getCharacter()
+			local rootPart = getRootPart(character)
+
+			if rootPart then
+
+				local gunPart = findGunDrop()
+
+				if gunPart and gunPart.Parent then
+
+					infoLabel.Text =
+						"Оружие: GunDrop найден"
+
+					moveToPickup(
+						rootPart,
+						gunPart
+					)
+
+					task.wait(0.15)
+
+				else
+					infoLabel.Text =
+						"Оружие: GunDrop не найден"
+
+					task.wait(0.30)
+				end
+
+			else
+				infoLabel.Text =
+					"Оружие: персонаж не готов"
+
+				task.wait(0.30)
+			end
+
+		else
+			task.wait(0.20)
+		end
+	end
+end)
+
+--==================================================
+-- COIN FARM LOOP
+--==================================================
+
+task.spawn(function()
+	while running do
+
+		if isCoinFarmEnabled and not isAutoGunEnabled then
+
+			local character = getCharacter()
+			local rootPart = getRootPart(character)
+
+			if rootPart then
+
+				local container = findCoinContainer()
+
+				if not container then
+
+					infoLabel.Text =
+						"Монеты: CoinContainer не найден"
+
+					task.wait(0.50)
+
+				else
+
+					local coinPart, distance =
+						findNearestCoin(rootPart)
+
+					if coinPart and coinPart.Parent then
+
+						infoLabel.Text =
+							string.format(
+								"Монеты: найдена (%.0f studs)",
+								distance
+							)
+
+						moveToPickup(
+							rootPart,
+							coinPart
+						)
+
+						task.wait(0.12)
+
+					else
+						infoLabel.Text =
+							"Монеты: активных монет нет"
+
+						task.wait(0.35)
+					end
+				end
+
+			else
+				infoLabel.Text =
+					"Монеты: персонаж не готов"
+
+				task.wait(0.35)
+			end
+
+		else
+			task.wait(0.20)
+		end
+	end
+end)
+
+--==================================================
+-- ROLE SCANNER LOOP
+--==================================================
+
+task.spawn(function()
+	while running do
+		pcall(scanRoles)
+		task.wait(0.50)
+	end
+end)
+
+--==================================================
+-- KEYBIND K
+--==================================================
+
+connect(UserInputService.InputBegan, function(input, gameProcessed)
+
+	if gameProcessed then
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.K then
+
+		isMenuVisible = not isMenuVisible
+
+		mainFrame.Visible =
+			isMenuVisible
+	end
+end)
 
 --==================================================
 -- CLEANUP
@@ -268,315 +827,19 @@ end
 
 ENV.MM2UtilityCleanup = cleanup
 
-connect(screenGui.AncestryChanged, function(_, parent)
-	if parent == nil and running then
-		cleanup()
-	end
-end)
-
 --==================================================
--- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+-- INITIALIZE
 --==================================================
 
-local function getRootPart(character)
-	if not character then
-		return nil
-	end
+updateFarmButton()
+updateGunButton()
 
-	local root = character:FindFirstChild("HumanoidRootPart")
-
-	if root and root:IsA("BasePart") then
-		return root
-	end
-
-	return nil
+if hasTouchSupport() then
+	infoLabel.Text =
+		"Готово • touch API доступен"
+else
+	infoLabel.Text =
+		"Готово • touch API не найден"
 end
 
-local function hasItem(player, itemName)
-	if not player then
-		return false
-	end
-
-	local character = player.Character
-	local backpack = player:FindFirstChildOfClass("Backpack")
-
-	if character and character:FindFirstChild(itemName) then
-		return true
-	end
-
-	if backpack and backpack:FindFirstChild(itemName) then
-		return true
-	end
-
-	return false
-end
-
-local function getObjectPart(object)
-	if not object then
-		return nil
-	end
-
-	if object:IsA("BasePart") then
-		return object
-	end
-
-	return object:FindFirstChildWhichIsA("BasePart", true)
-end
-
---==================================================
--- ПОИСК GUN DROP
---==================================================
-
-local function findGunDrop()
-	for _, object in ipairs(Workspace:GetChildren()) do
-		if object.Name == "GunDrop" then
-			local part = getObjectPart(object)
-
-			if part then
-				return part
-			end
-		end
-	end
-
-	return nil
-end
-
---==================================================
--- ПОИСК КОНТЕЙНЕРА МОНЕТ
---==================================================
-
-local function findCoinContainer()
-	return Workspace:FindFirstChild("CoinContainer")
-		or Workspace:FindFirstChild("Coins")
-end
-
---==================================================
--- ПОИСК ЧАСТИ МОНЕТЫ
---==================================================
-
-local function getCoinPart(coin)
-	if not coin then
-		return nil
-	end
-
-	if coin:IsA("BasePart") then
-		return coin
-	end
-
-	local coinVisual = coin:FindFirstChild("CoinVisual", true)
-
-	if coinVisual and coinVisual:IsA("BasePart") then
-		return coinVisual
-	end
-
-	local part = coin:FindFirstChild("Part", true)
-
-	if part and part:IsA("BasePart") then
-		return part
-	end
-
-	return coin:FindFirstChildWhichIsA("BasePart", true)
-end
-
---==================================================
--- ПОИСК БЛИЖАЙШЕЙ МОНЕТЫ
---==================================================
-
-local coinCooldown = {}
-
-local function findNearestCoin(rootPart)
-	local container = findCoinContainer()
-
-	if not container or not rootPart then
-		return nil
-	end
-
-	local nearestPart = nil
-	local nearestDistance = math.huge
-	local now = os.clock()
-
-	for _, coin in ipairs(container:GetChildren()) do
-		local cooldownUntil = coinCooldown[coin]
-
-		if not cooldownUntil or cooldownUntil <= now then
-			local coinPart = getCoinPart(coin)
-
-			if coinPart and coinPart.Parent then
-				local distance = (rootPart.Position - coinPart.Position).Magnitude
-
-				if distance < nearestDistance then
-					nearestDistance = distance
-					nearestPart = coinPart
-				end
-			end
-		end
-	end
-
-	return nearestPart
-end
-
---==================================================
--- СКАНИРОВАНИЕ РОЛЕЙ
---==================================================
-
-local lastMurderer = nil
-local lastSheriff = nil
-local lastGunDropped = nil
-
-local function scanRoles()
-	local murderer = "Неизвестно"
-	local sheriff = "Неизвестно"
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if hasItem(player, "Knife") then
-			murderer = player.Name
-		end
-
-		if hasItem(player, "Gun") then
-			sheriff = player.Name
-		end
-	end
-
-	local gunDropped = findGunDrop() ~= nil
-
-	if murderer ~= lastMurderer then
-		lastMurderer = murderer
-		murdererLabel.Text = "Убийца: " .. murderer
-	end
-
-	if sheriff ~= lastSheriff then
-		lastSheriff = sheriff
-		sheriffLabel.Text = "Шериф: " .. sheriff
-	end
-
-	if gunDropped ~= lastGunDropped then
-		lastGunDropped = gunDropped
-
-		if gunDropped then
-			heroLabel.Text = "Оружие на полу: ДА"
-			heroLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
-		else
-			heroLabel.Text = "Оружие на полу: Нет"
-			heroLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
-		end
-	end
-end
-
---==================================================
--- ОБНОВЛЕНИЕ КНОПОК
---==================================================
-
-local function updateFarmButton()
-	if isCoinFarmEnabled then
-		toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-		toggleFarmBtn.Text = "Авто-сбор монет: ВКЛ"
-	else
-		toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-		toggleFarmBtn.Text = "Авто-сбор монет: ВЫКЛ"
-	end
-end
-
-local function updateGunButton()
-	if isAutoGunEnabled then
-		toggleGunBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
-		toggleGunBtn.Text = "Авто-подбор оружия: ВКЛ"
-	else
-		toggleGunBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-		toggleGunBtn.Text = "Авто-подбор оружия: ВЫКЛ"
-	end
-end
-
---==================================================
--- КНОПКИ
---==================================================
-
-connect(toggleFarmBtn.MouseButton1Click, function()
-	isCoinFarmEnabled = not isCoinFarmEnabled
-	updateFarmButton()
-end)
-
-connect(toggleGunBtn.MouseButton1Click, function()
-	isAutoGunEnabled = not isAutoGunEnabled
-	updateGunButton()
-end)
-
---==================================================
--- AUTO GUN
---==================================================
-
-task.spawn(function()
-	while running do
-		if isAutoGunEnabled then
-			local character = LocalPlayer.Character
-			local rootPart = getRootPart(character)
-
-			if rootPart then
-				local gunPart = findGunDrop()
-
-				if gunPart then
-					rootPart.CFrame = gunPart.CFrame + Vector3.new(0, 2, 0)
-				end
-			end
-		end
-
-		task.wait(0.20)
-	end
-end)
-
---==================================================
--- COIN FARM
---==================================================
-
-task.spawn(function()
-	while running do
-		if isCoinFarmEnabled and not isAutoGunEnabled then
-			local character = LocalPlayer.Character
-			local rootPart = getRootPart(character)
-
-			if rootPart then
-				local coinPart = findNearestCoin(rootPart)
-
-				if coinPart and coinPart.Parent then
-					rootPart.CFrame = coinPart.CFrame + Vector3.new(0, 1.5, 0)
-
-					local coinObject = coinPart.Parent
-					coinCooldown[coinObject] = os.clock() + 0.35
-				end
-			end
-		end
-
-		task.wait(0.18)
-	end
-end)
-
---==================================================
--- ROLE SCANNER
---==================================================
-
-task.spawn(function()
-	while running do
-		scanRoles()
-		task.wait(0.50)
-	end
-end)
-
---==================================================
--- ГОРЯЧАЯ КЛАВИША K
---==================================================
-
-connect(UserInputService.InputBegan, function(input, gameProcessed)
-	if gameProcessed then
-		return
-	end
-
-	if input.KeyCode == Enum.KeyCode.K then
-		isMenuVisible = not isMenuVisible
-		mainFrame.Visible = isMenuVisible
-	end
-end)
-
---==================================================
--- ГОТОВО
---==================================================
-
-print("[MM2 Utility Hub] Loaded successfully.")
+print("[MM2 Utility Hub] Loaded successfully!")
