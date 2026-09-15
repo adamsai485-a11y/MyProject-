@@ -1,0 +1,313 @@
+--==================================================
+-- MM2 UTILITY GUI (ROLES, COIN FARM, AUTO GUN)
+--==================================================
+
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+
+--==================================================
+-- ОЧИСТКА СТАРОГО GUI
+--==================================================
+
+for _, gui in ipairs(CoreGui:GetChildren()) do
+	if gui.Name == "MM2UtilityMenu" then
+		gui:Destroy()
+	end
+end
+
+--==================================================
+-- GUI МЕНЮ
+--==================================================
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MM2UtilityMenu"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = CoreGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 300, 0, 330)
+mainFrame.Position = UDim2.new(0, 50, 0, 150)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 35)
+title.BackgroundTransparency = 1
+title.Text = "MM2 Utility Hub (K - меню)"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 13
+title.Font = Enum.Font.GothamBold
+title.Parent = mainFrame
+
+-- Перетаскивание меню мышкой / пальцем
+local dragging, dragInput, dragStart, startPos
+title.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = mainFrame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+		end)
+	end
+end)
+
+title.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - dragStart
+		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+--==================================================
+-- СОСТОЯНИЯ
+--==================================================
+
+local isCoinFarmEnabled = false
+local isAutoGunEnabled = false
+local isMenuVisible = true
+
+--==================================================
+-- КНОПКИ И ИНФО-ПАНЕЛЬ
+--==================================================
+
+local toggleFarmBtn = Instance.new("TextButton")
+toggleFarmBtn.Size = UDim2.new(1, -20, 0, 40)
+toggleFarmBtn.Position = UDim2.new(0, 10, 0, 40)
+toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+toggleFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleFarmBtn.TextSize = 13
+toggleFarmBtn.Font = Enum.Font.GothamBold
+toggleFarmBtn.Text = "Авто-сбор монет: ВЫКЛ"
+toggleFarmBtn.Parent = mainFrame
+Instance.new("UICorner", toggleFarmBtn).CornerRadius = UDim.new(0, 6)
+
+local toggleGunBtn = Instance.new("TextButton")
+toggleGunBtn.Size = UDim2.new(1, -20, 0, 40)
+toggleGunBtn.Position = UDim2.new(0, 10, 0, 88)
+toggleGunBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+toggleGunBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleGunBtn.TextSize = 13
+toggleGunBtn.Font = Enum.Font.GothamBold
+toggleGunBtn.Text = "Авто-подбор оружия: ВЫКЛ"
+toggleGunBtn.Parent = mainFrame
+Instance.new("UICorner", toggleGunBtn).CornerRadius = UDim.new(0, 6)
+
+-- Роли (Индикатор)
+local rolesFrame = Instance.new("Frame")
+rolesFrame.Size = UDim2.new(1, -20, 0, 120)
+rolesFrame.Position = UDim2.new(0, 10, 0, 136)
+rolesFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+rolesFrame.BorderSizePixel = 0
+rolesFrame.Parent = mainFrame
+Instance.new("UICorner", rolesFrame).CornerRadius = UDim.new(0, 6)
+
+local rolesTitle = Instance.new("TextLabel")
+rolesTitle.Size = UDim2.new(1, 0, 0, 25)
+rolesTitle.BackgroundTransparency = 1
+rolesTitle.Text = "— СТАТУС РОЛЕЙ —"
+rolesTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+rolesTitle.TextSize = 11
+rolesTitle.Font = Enum.Font.GothamBold
+rolesTitle.Parent = rolesFrame
+
+local murdererLabel = Instance.new("TextLabel")
+murdererLabel.Size = UDim2.new(1, -10, 0, 25)
+murdererLabel.Position = UDim2.new(0, 5, 0, 30)
+murdererLabel.BackgroundTransparency = 1
+murdererLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+murdererLabel.TextSize = 12
+murdererLabel.Font = Enum.Font.Gotham
+murdererLabel.TextXAlignment = Enum.TextXAlignment.Left
+murdererLabel.Text = "Убийца: Поиск..."
+murdererLabel.Parent = rolesFrame
+
+local sheriffLabel = Instance.new("TextLabel")
+sheriffLabel.Size = UDim2.new(1, -10, 0, 25)
+sheriffLabel.Position = UDim2.new(0, 5, 0, 55)
+sheriffLabel.BackgroundTransparency = 1
+sheriffLabel.TextColor3 = Color3.fromRGB(80, 140, 255)
+sheriffLabel.TextSize = 12
+sheriffLabel.Font = Enum.Font.Gotham
+sheriffLabel.TextXAlignment = Enum.TextXAlignment.Left
+sheriffLabel.Text = "Шериф: Поиск..."
+sheriffLabel.Parent = rolesFrame
+
+local heroLabel = Instance.new("TextLabel")
+heroLabel.Size = UDim2.new(1, -10, 0, 25)
+heroLabel.Position = UDim2.new(0, 5, 0, 80)
+heroLabel.BackgroundTransparency = 1
+heroLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+heroLabel.TextSize = 12
+heroLabel.Font = Enum.Font.Gotham
+heroLabel.TextXAlignment = Enum.TextXAlignment.Left
+heroLabel.Text = "Герой (Оружие на полу): Нет"
+heroLabel.Parent = rolesFrame
+
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(1, -20, 0, 20)
+infoLabel.Position = UDim2.new(0, 10, 0, 265)
+infoLabel.BackgroundTransparency = 1
+infoLabel.TextColor3 = Color3.fromRGB(130, 130, 130)
+infoLabel.TextSize = 10
+infoLabel.Font = Enum.Font.Gotham
+infoLabel.Text = "Нажми K чтобы скрыть / открыть меню."
+infoLabel.Parent = mainFrame
+
+--==================================================
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+--==================================================
+
+local function getRootPart(character)
+	if not character then return nil end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then return root end
+	return nil
+end
+
+-- Проверка ролей в MM2 по инвентарю / инструменту
+local function scanRoles()
+	local mName = "Неизвестно"
+	local sName = "Неизвестно"
+	local gunDropped = false
+
+	-- Проверяем игроков
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then
+			local char = player.Character
+			-- Ищем нож у убийцы
+			if char:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife")) then
+				mName = player.Name
+			end
+			-- Ищем пистолет у шерифа
+			if char:FindFirstChild("Gun") or (player.Backpack and player.Backpack:FindFirstChild("Gun")) then
+				sName = player.Name
+			end
+		end
+	end
+
+	-- Проверяем, не валяется ли пистолет на карте (если шериф умер)
+	for _, obj in ipairs(Workspace:GetChildren()) do
+		if obj.Name == "GunDrop" then
+			gunDropped = true
+			break
+		end
+	end
+
+	murdererLabel.Text = "Убийца: " .. mName
+	sheriffLabel.Text = "Шериф: " .. sName
+	heroLabel.Text = "Оружие на полу: " .. (gunDropped / "Да" or "Нет") -- синтаксический фикс ниже
+end
+
+-- Безопасный апдейт текста оружия на полу
+local function updateHeroStatus()
+	local gunDropped = false
+	for _, obj in ipairs(Workspace:GetChildren()) do
+		if obj.Name == "GunDrop" then
+			gunDropped = true
+			break
+		end
+	end
+	if gunDropped then
+		heroLabel.Text = "Оружие на полу: ДА (Бери!)"
+		heroLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
+	else
+		heroLabel.Text = "Оружие на полу: Нет"
+		heroLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+	end
+end
+
+--==================================================
+-- КНОПКИ УПРАВЛЕНИЯ ФУНКЦИЯМИ
+--==================================================
+
+toggleFarmBtn.MouseButton1Click:Connect(function()
+	isCoinFarmEnabled = not isCoinFarmEnabled
+	if isCoinFarmEnabled then
+		toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+		toggleFarmBtn.Text = "Авто-сбор монет: ВКЛ"
+	else
+		toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+		toggleFarmBtn.Text = "Авто-сбор монет: ВЫКЛ"
+	end
+end)
+
+toggleGunBtn.MouseButton1Click:Connect(function()
+	isAutoGunEnabled = not isAutoGunEnabled
+	if isAutoGunEnabled then
+		toggleGunBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+		toggleGunBtn.Text = "Авто-подбор оружия: ВКЛ"
+	else
+		toggleGunBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+		toggleGunBtn.Text = "Авто-подбор оружия: ВЫКЛ"
+	end
+end)
+
+--==================================================
+-- ОСНОВНОЙ ЦИКЛ (ФАРМ И ПОДБОР)
+--==================================================
+
+RunService.Heartbeat:Connect(function()
+	scanRoles()
+	updateHeroStatus()
+
+	local character = LocalPlayer.Character
+	if not character then return end
+	local rootPart = getRootPart(character)
+	if not rootPart then return end
+
+	-- Авто-подбор упавшего пистолета
+	if isAutoGunEnabled then
+		for _, obj in ipairs(Workspace:GetChildren()) do
+			if obj.Name == "GunDrop" and obj:IsA("BasePart") then
+				rootPart.CFrame = obj.CFrame + Vector3.new(0, 2, 0)
+				break
+			end
+		end
+	end
+
+	-- Авто-сбор монет (ищет папки с монетками на карте)
+	if isCoinFarmEnabled then
+		local coinContainer = Workspace:FindFirstChild("CoinContainer") or Workspace:FindFirstChild("Coins")
+		if coinContainer then
+			for _, coin in ipairs(coinContainer:GetChildren()) do
+				local coinPart = coin:FindFirstChild("CoinVisual") or coin:FindFirstChild("Part") or (coin:IsA("BasePart") and coin)
+				if coinPart and isCoinFarmEnabled then
+					-- Плавное или быстрое перемещение к монетам
+					rootPart.CFrame = coinPart.CFrame
+					task.wait(0.15) -- Задержка, чтобы античит не кикал за моментальный телепорт
+					break
+				end
+			end
+		end
+	end
+end)
+
+--==================================================
+-- ГОРЯЧИЕ КЛАВИШИ
+--==================================================
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if input.KeyCode == Enum.KeyCode.K then
+		isMenuVisible = not isMenuVisible
+		mainFrame.Visible = isMenuVisible
+	end
+end)
+
+print("[Xeno] MM2 Utility Hub loaded successfully!")
